@@ -44,6 +44,11 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
     [confirmApproval, setConfirmApproval] = useState(false),
     [preview, setPreview] = useState(false),
     [course, setCourse] = useState(tax.courses[0]?.id ?? ''),
+    [curriculum, setCurriculum] = useState(
+      tax.curriculumVersions?.find(
+        (v) => v.courseId === tax.courses[0]?.id && v.status === 'active',
+      )?.id ?? '',
+    ),
     [semester, setSemester] = useState(''),
     [chapter, setChapter] = useState('');
   useEffect(() => {
@@ -59,6 +64,7 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
           setChapter(c?.id ?? '');
           setSemester(s?.id ?? '');
           setCourse(s?.parentId ?? '');
+          setCurriculum(s?.curriculumVersionId ?? '');
         })
         .catch((e) => setError(e.message));
   }, [id, isNew, tax]);
@@ -184,15 +190,49 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                 value={course}
                 onChange={(v) => {
                   setCourse(v);
+                  setCurriculum(
+                    tax.curriculumVersions?.find(
+                      (cv) => cv.courseId === v && cv.status === 'active',
+                    )?.id ?? '',
+                  );
                   setSemester('');
                   setChapter('');
                   change('topicId', '');
                   change('subtopicId', null);
                 }}
               />
+              <Field label="Curriculum version">
+                <select
+                  value={curriculum}
+                  onChange={(e) => {
+                    setCurriculum(e.target.value);
+                    setSemester('');
+                    setChapter('');
+                    change('topicId', '');
+                    change('subtopicId', null);
+                  }}
+                >
+                  <option value="">Select curriculum version</option>
+                  {(tax.curriculumVersions ?? [])
+                    .filter(
+                      (v) =>
+                        v.courseId === course && (v.status !== 'retired' || v.id === curriculum),
+                    )
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.code} — {v.name} ({v.status})
+                      </option>
+                    ))}
+                </select>
+              </Field>
               <TaxonSelect
                 label="Semester"
-                items={tax.semesters.filter((s) => s.parentId === course)}
+                items={tax.semesters.filter(
+                  (s) =>
+                    s.parentId === course &&
+                    s.curriculumVersionId === curriculum &&
+                    (s.status !== 'retired' || s.id === semester),
+                )}
                 value={semester}
                 onChange={(v) => {
                   setSemester(v);
@@ -203,7 +243,9 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
               />
               <TaxonSelect
                 label="Chapter"
-                items={tax.chapters.filter((c) => c.parentId === semester)}
+                items={tax.chapters.filter(
+                  (c) => c.parentId === semester && (c.status !== 'retired' || c.id === chapter),
+                )}
                 value={chapter}
                 onChange={(v) => {
                   setChapter(v);
@@ -213,7 +255,9 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
               />
               <TaxonSelect
                 label="Topic"
-                items={tax.topics.filter((t) => t.parentId === chapter)}
+                items={tax.topics.filter(
+                  (t) => t.parentId === chapter && (t.status !== 'retired' || t.id === q.topicId),
+                )}
                 value={q.topicId}
                 onChange={(v) => {
                   change('topicId', v);
@@ -223,7 +267,10 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
               <TaxonSelect
                 label="Subtopic"
                 optional
-                items={tax.subtopics.filter((t) => t.parentId === q.topicId)}
+                items={tax.subtopics.filter(
+                  (t) =>
+                    t.parentId === q.topicId && (t.status !== 'retired' || t.id === q.subtopicId),
+                )}
                 value={q.subtopicId ?? ''}
                 onChange={(v) => change('subtopicId', v || null)}
               />

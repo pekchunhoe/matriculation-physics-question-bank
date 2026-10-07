@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { Bank, BankError, taxonomyTables, type Filters } from './database.js';
 import { compareDocuments, PdfRevisionImportService } from './revisions.js';
 import { warnings } from '../shared/schema.js';
+import { editableKinds } from './curriculum.js';
+import { classificationSchema, type EditableKind } from '../shared/curriculum.js';
 
 export function createApp(bank: Bank, uploadDir: string) {
   const app = express();
@@ -55,6 +57,64 @@ export function createApp(bank: Bank, uploadDir: string) {
       }
   };
   app.get('/api/taxonomy', (_req, res) => res.json(bank.taxonomy()));
+  const editable = (kind: string): EditableKind => {
+    if (!editableKinds.includes(kind as EditableKind))
+      throw new BankError('This taxonomy type is not editable');
+    return kind as EditableKind;
+  };
+  app.get('/api/taxonomy/:kind/:id/impact', (req, res) =>
+    res.json(bank.curriculum.impact(editable(req.params.kind), String(req.params.id))),
+  );
+  app.patch('/api/taxonomy/:kind/:id', (req, res) =>
+    res.json(bank.curriculum.edit(editable(req.params.kind), String(req.params.id), req.body)),
+  );
+  app.delete('/api/taxonomy/:kind/:id', (req) => {
+    editable(req.params.kind);
+    throw new BankError(
+      'Permanent curriculum deletion is disabled. Retire the item to preserve question history.',
+      409,
+    );
+  });
+  app.get('/api/curriculum-versions', (_req, res) => res.json(bank.curriculum.versions()));
+  app.post('/api/curriculum-versions', (req, res) =>
+    res
+      .status(201)
+      .json(
+        bank.curriculum.createVersion(req.body.version, req.body.note, req.body.author ?? null),
+      ),
+  );
+  app.get('/api/curriculum-versions/:id/impact', (req, res) =>
+    res.json(bank.curriculum.impact('curriculumVersions', String(req.params.id))),
+  );
+  app.patch('/api/curriculum-versions/:id', (req, res) =>
+    res.json(bank.curriculum.editVersion(String(req.params.id), req.body)),
+  );
+  app.delete('/api/curriculum-versions/:id', () => {
+    throw new BankError('Retire curriculum versions instead of deleting their history.', 409);
+  });
+  app.get('/api/curriculum-versions/:id/export', (req, res) => {
+    const doc = bank.curriculum.export(String(req.params.id));
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="curriculum-${doc.curriculumVersion.code}.json"`,
+    );
+    res.json(doc);
+  });
+  app.post('/api/curriculum/import/validate', (req, res) =>
+    res.json(bank.curriculum.plan(req.body.document)),
+  );
+  app.post('/api/curriculum/import', (req, res) =>
+    res
+      .status(201)
+      .json(
+        bank.curriculum.import(
+          req.body.document,
+          req.body.token,
+          req.body.note,
+          req.body.author ?? null,
+        ),
+      ),
+  );
   app.post('/api/taxonomy/:kind', (req, res) => {
     const kind = req.params.kind as keyof typeof taxonomyTables;
     if (!Object.hasOwn(taxonomyTables, kind)) throw new BankError('Unknown taxonomy type');
@@ -64,7 +124,13 @@ export function createApp(bank: Bank, uploadDir: string) {
     )
       throw new BankError('Name and parentId are required');
     res.status(201).json({
-      id: bank.addTaxon(kind, req.body.name, req.body.parentId, req.body.isTest === true),
+      id: bank.addTaxon(
+        kind,
+        req.body.name,
+        req.body.parentId,
+        req.body.isTest === true,
+        typeof req.body.curriculumVersionId === 'string' ? req.body.curriculumVersionId : undefined,
+      ),
     });
   });
   app.get('/api/counts', (req, res) =>
@@ -88,7 +154,15 @@ export function createApp(bank: Bank, uploadDir: string) {
   app.post('/api/import/validate', (req, res) => {
     const doc = bank.resolveImport(req.body.document);
     checkAssets(doc);
-    res.json({ document: doc, warnings: warnings(doc) });
+    res.json({
+      document: doc,
+      classification: bank.curriculum.classification(doc),
+      savedClassification:
+        req.body.document?.schemaVersion === 2
+          ? classificationSchema.parse(req.body.document.savedClassification)
+          : undefined,
+      warnings: warnings(doc),
+    });
   });
   app.post('/api/import', (req, res) => {
     const doc = bank.resolveImport(req.body.document);
@@ -102,7 +176,15 @@ export function createApp(bank: Bank, uploadDir: string) {
           req.body.author,
           'json',
         )
-      : bank.create(doc, req.body.note, req.body.author, req.body.confirmApproval === true);
+      : bank.create(
+          doc,
+          req.body.note,
+          req.body.author,
+          req.body.confirmApproval === true,
+          req.body.document?.schemaVersion === 2
+            ? classificationSchema.parse(req.body.document.savedClassification)
+            : undefined,
+        );
     res.status(201).json(result);
   });
   app.get('/api/questions/:id', (req, res) => {
@@ -126,6 +208,7 @@ export function createApp(bank: Bank, uploadDir: string) {
         : doc,
       warnings: student ? [] : warnings(doc),
       metadata: student ? undefined : bank.current(id),
+      savedClassification: student ? undefined : bank.savedClassification(id, version),
     });
   });
   app.put('/api/questions/:id', (req, res) => {
@@ -136,12 +219,24 @@ export function createApp(bank: Bank, uploadDir: string) {
     );
   });
   app.get('/api/questions/:id/export', (req, res) => {
-    const doc = bank.document(String(req.params.id));
+    const version = req.query.version === undefined ? undefined : Number(req.query.version);
+    if (version !== undefined && (!Number.isInteger(version) || version < 1))
+      throw new BankError('Invalid version');
+    const id = String(req.params.id),
+      doc = bank.document(id, version);
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${doc.question.questionCode}.json"`,
     );
-    res.json(doc);
+    res.json(
+      req.query.provenance === 'true'
+        ? {
+            schemaVersion: 2,
+            document: doc,
+            savedClassification: bank.savedClassification(id, version),
+          }
+        : doc,
+    );
   });
   app.get('/api/questions/:id/versions', (req, res) =>
     res.json(bank.versions(String(req.params.id))),

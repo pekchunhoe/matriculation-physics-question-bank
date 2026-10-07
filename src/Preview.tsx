@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Asset, QuestionDocument, Taxonomy } from '../shared/schema';
 import type { Difference } from '../server/revisions';
 import { api, json, download } from './api';
-import { Field, type LoadedQuestion } from './components';
+import { Field, QuestionMetadata, type LoadedQuestion } from './components';
 import { Equation, MathText } from './MathText';
 
 function Assets({ items }: { items: Asset[] }) {
@@ -17,7 +17,7 @@ function Assets({ items }: { items: Asset[] }) {
             </a>
           ) : (
             <figure key={a.id}>
-              <img src={a.url} alt={a.alt} />
+              <img src={a.url} alt={a.alt} loading="lazy" />
               <figcaption>
                 {a.alt}
                 {a.kind === 'answer_diagram' ? ' · Answer diagram' : ''}
@@ -256,8 +256,14 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
           <p className="eyebrow">{teacher ? 'TEACHER VIEW' : 'STUDENT PREVIEW'}</p>
           <h1>{q?.title ?? 'Question preview'}</h1>
           <p>
-            {s?.name} · {c?.name} · {t?.name}
-            {st ? ' · ' + st.name : ''}
+            {selected && loaded?.savedClassification ? (
+              `${loaded.savedClassification.semester.name} · ${loaded.savedClassification.chapter.name} · ${loaded.savedClassification.topic.name}${loaded.savedClassification.subtopic ? ' · ' + loaded.savedClassification.subtopic.name : ''}`
+            ) : (
+              <>
+                {s?.name} · {c?.name} · {t?.name}
+                {st ? ' · ' + st.name : ''}
+              </>
+            )}
           </p>
         </div>
         <div className="actions">
@@ -311,7 +317,23 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
               >
                 Export JSON
               </button>
+              <button
+                className="button"
+                disabled={!loaded.savedClassification}
+                onClick={() =>
+                  download(q!.questionCode + '-provenance.json', {
+                    schemaVersion: 2,
+                    document: loaded.document,
+                    savedClassification: loaded.savedClassification,
+                  })
+                }
+              >
+                Download provenance JSON
+              </button>
             </div>
+          )}
+          {teacher && (
+            <QuestionMetadata doc={loaded.document} tax={tax} saved={loaded.savedClassification} />
           )}
           {loaded.warnings.map((w) => (
             <p className="warning" role="status" key={w}>

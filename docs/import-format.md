@@ -22,6 +22,8 @@ Difficulty is identified by the controlled record ID (`easy`, `medium`, `hard` i
 
 ## Contextual classification
 
+With multiple versions, additionally supply `classification.curriculumVersion` by ID or code to disambiguate same-named semesters. Stable topic/subtopic IDs remain authoritative; conflicting ancestry is rejected. See [curriculum JSON](curriculum.md) for taxonomy imports and [provenance v2](production-and-pilot.md) for the optional question envelope. Original v1 exports remain accepted unchanged.
+
 Instead of knowing taxonomy IDs, an import can additionally supply:
 
 ```json

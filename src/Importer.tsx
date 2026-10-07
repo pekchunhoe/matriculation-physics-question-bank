@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { QuestionDocument, Taxonomy } from '../shared/schema';
+import type { Classification } from '../shared/curriculum';
 import { api, json } from './api';
-import { Field } from './components';
+import { Field, QuestionMetadata } from './components';
 import { ContentPreview } from './Preview';
 export function Importer({ tax }: { tax: Taxonomy }) {
   const [source, setSource] = useState(''),
     [doc, setDoc] = useState<QuestionDocument | null>(null),
+    [provenance, setProvenance] = useState<Classification | undefined>(undefined),
     [warnings, setWarnings] = useState<string[]>([]),
     [error, setError] = useState(''),
     [note, setNote] = useState(''),
@@ -18,11 +20,13 @@ export function Importer({ tax }: { tax: Taxonomy }) {
     setError('');
     setDoc(null);
     try {
-      const result = await api<{ document: QuestionDocument; warnings: string[] }>(
-        '/import/validate',
-        json('POST', { document: JSON.parse(source) }),
-      );
+      const result = await api<{
+        document: QuestionDocument;
+        warnings: string[];
+        savedClassification?: Classification;
+      }>('/import/validate', json('POST', { document: JSON.parse(source) }));
       setDoc(result.document);
+      setProvenance(result.savedClassification);
       setWarnings(result.warnings);
       setConfirm(false);
     } catch (e) {
@@ -48,7 +52,9 @@ export function Importer({ tax }: { tax: Taxonomy }) {
       const result = await api<{ id: string; pending?: boolean }>(
         '/import',
         json('POST', {
-          document: doc,
+          document: provenance
+            ? { schemaVersion: 2, document: doc, savedClassification: provenance }
+            : doc,
           note,
           author,
           confirmApproval: confirm,
@@ -120,9 +126,10 @@ export function Importer({ tax }: { tax: Taxonomy }) {
           Validate and preview
         </button>
         <p className="muted">
-          Use stable topic and difficulty IDs from the curriculum API. An optional classification
-          object can resolve course, semester, chapter, topic and subtopic by ID, slug or normalized
-          name.
+          Accepts the original schemaVersion 1 format and schemaVersion 2 exports with
+          classification provenance. Use stable topic and difficulty IDs from the curriculum API. An
+          optional classification object can resolve course, semester, chapter, topic and subtopic
+          by ID, slug or normalized name.
         </p>
       </section>
       {doc && (
@@ -132,6 +139,7 @@ export function Importer({ tax }: { tax: Taxonomy }) {
               {w}
             </p>
           ))}
+          <QuestionMetadata doc={doc} tax={tax} saved={provenance} />
           <ContentPreview doc={doc} teacher />
           <section className="panel">
             <h2>Save validated content</h2>

@@ -273,7 +273,8 @@ details[open] > summary {
   margin-bottom: 0.8rem;
 }
 .two-columns,
-.three-columns {
+.three-columns,
+.form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 1.2rem;
@@ -795,7 +796,8 @@ footer {
     display: block;
   }
   .three-columns,
-  .two-columns {
+  .two-columns,
+  .form-grid {
     grid-template-columns: 1fr;
   }
   .panel,

@@ -6,6 +6,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+  if (!response.headers.get('content-type')?.includes('application/json'))
+    throw new Error(
+      `Question Bank API unavailable (HTTP ${response.status}). The frontend needs the configured Express backend; a static-only deployment cannot read or save the bank.`,
+    );
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? 'Request failed');
   return body as T;

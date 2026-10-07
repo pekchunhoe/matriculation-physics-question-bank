@@ -1,6 +1,8 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { CurriculumService } from './curriculum.js';
+import { questionExportSchema, type Classification } from '../shared/curriculum.js';
 import {
   documentSchema,
   warnings,
@@ -35,6 +37,7 @@ const sqlTable = (kind: keyof typeof taxonomyTables) =>
 export type Filters = Record<string, string | undefined>;
 export class Bank {
   db: DatabaseSync;
+  curriculum = new CurriculumService(this);
   constructor(path = ':memory:') {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
@@ -42,15 +45,33 @@ export class Bank {
       'CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL)',
     );
     const folder = new URL('./migrations/', import.meta.url);
-    for (const name of readdirSync(folder)
-      .filter((n) => /^\d+-.*\.sql$/.test(n))
-      .sort()) {
-      const version = Number(name.split('-')[0]);
-      if (!this.one('SELECT version FROM schema_migrations WHERE version=?', version))
-        this.transaction(() => {
-          this.db.exec(readFileSync(new URL(name, folder), 'utf8'));
-          this.run('INSERT INTO schema_migrations VALUES(?,?)', version, new Date().toISOString());
-        });
+    try {
+      for (const name of readdirSync(folder)
+        .filter((n) => /^\d+-.*\.sql$/.test(n))
+        .sort()) {
+        const version = Number(name.split('-')[0]);
+        if (!this.one('SELECT version FROM schema_migrations WHERE version=?', version))
+          this.transaction(() => {
+            this.db.exec(readFileSync(new URL(name, folder), 'utf8'));
+            if (
+              version === 2 &&
+              this.one('SELECT count(*) n FROM question_versions')?.n !==
+                this.one('SELECT count(*) n FROM question_version_classifications')?.n
+            )
+              throw new BankError(
+                'Curriculum migration cannot reconstruct every historical classification. Restore missing taxonomy records from backup before retrying. Migration rolled back.',
+                409,
+              );
+            this.run(
+              'INSERT INTO schema_migrations VALUES(?,?)',
+              version,
+              new Date().toISOString(),
+            );
+          });
+      }
+    } catch (error) {
+      this.db.close();
+      throw error;
     }
   }
   one(sql: string, ...params: SQLInputValue[]) {
@@ -74,51 +95,99 @@ export class Bank {
     }
   }
   taxonomy(): Taxonomy {
-    return Object.fromEntries(
-      Object.entries(taxonomyTables).map(([key, parent]) => [
-        key,
-        this.all(
-          `SELECT * FROM ${sqlTable(key as keyof typeof taxonomyTables)} ORDER BY sort_order,name`,
-        ).map((r) => ({
-          id: String(r.id),
-          name: String(r.name),
-          slug: String(r.slug),
-          parentId: parent ? String(r[parent]) : null,
-          order: Number(r.sort_order),
-          isTest: Boolean(r.is_test),
-        })),
-      ]),
-    ) as Taxonomy;
+    return {
+      ...Object.fromEntries(
+        Object.entries(taxonomyTables).map(([key, parent]) => [
+          key,
+          this.all(
+            `SELECT * FROM ${sqlTable(key as keyof typeof taxonomyTables)} ORDER BY sort_order,name`,
+          ).map((r) => ({
+            id: String(r.id),
+            name: String(r.name),
+            slug: String(r.slug),
+            parentId: parent ? String(r[parent]) : null,
+            order: Number(r.sort_order),
+            isTest: Boolean(r.is_test),
+            ...(r.status ? { status: String(r.status), revision: Number(r.revision) } : {}),
+            ...(r.curriculum_version_id
+              ? { curriculumVersionId: String(r.curriculum_version_id) }
+              : {}),
+          })),
+        ]),
+      ),
+      curriculumVersions: this.curriculum.versions(),
+    } as Taxonomy;
   }
   addTaxon(
     kind: keyof typeof taxonomyTables,
     name: string,
     parentId: string | null,
     isTest = false,
+    curriculumVersionId?: string,
   ) {
     const slug = slugify(name);
     if (!slug || name.length > 200) throw new BankError('Enter a valid taxonomy name');
     const table = sqlTable(kind),
       parent = taxonomyTables[kind];
     if (parent && !parentId) throw new BankError('Select the parent taxonomy record');
+    const cv =
+      kind === 'semesters'
+        ? this.curriculum
+            .versions()
+            .find(
+              (v) =>
+                v.courseId === parentId &&
+                (curriculumVersionId ? v.id === curriculumVersionId : v.status === 'active'),
+            )
+        : undefined;
+    if (kind === 'semesters' && !cv)
+      throw new BankError('Select a curriculum version belonging to this course');
+    if (cv?.status === 'retired')
+      throw new BankError('Restore or create a curriculum version before adding records');
+    if (kind === 'chapters' || kind === 'topics' || kind === 'subtopics') {
+      const parentKind =
+        kind === 'chapters' ? 'semesters' : kind === 'topics' ? 'chapters' : 'topics';
+      this.curriculum.assertWritableParent(parentKind, parentId!);
+    }
     if (
       this.all(
-        `SELECT name FROM ${table}${parent ? ' WHERE ' + parent + '=?' : ''}`,
+        `SELECT name FROM ${table}${parent ? ' WHERE ' + parent + '=?' : ''}${kind === 'semesters' ? ' AND curriculum_version_id=?' : ''}`,
         ...(parent ? [parentId] : []),
+        ...(cv ? [cv.id] : []),
       ).some((r) => normalize(String(r.name)) === normalize(name))
     )
       throw new BankError('This taxonomy name already exists under this parent', 409);
     const id = randomUUID();
     try {
-      this.run(
-        `INSERT INTO ${table}(id,name,slug,sort_order${parent ? ',' + parent : ''}${kind !== 'difficulties' ? ',is_test' : ''}) VALUES(?,?,?,?${parent ? ',?' : ''}${kind !== 'difficulties' ? ',?' : ''})`,
-        id,
-        name.trim().replace(/\s+/g, ' '),
-        slug,
-        Date.now(),
-        ...(parent ? [parentId] : []),
-        ...(kind !== 'difficulties' ? [Number(isTest)] : []),
-      );
+      this.transaction(() => {
+        this.run(
+          `INSERT INTO ${table}(id,name,slug,sort_order${parent ? ',' + parent : ''}${kind !== 'difficulties' ? ',is_test' : ''}${cv ? ',curriculum_version_id' : ''}) VALUES(?,?,?,?${parent ? ',?' : ''}${kind !== 'difficulties' ? ',?' : ''}${cv ? ',?' : ''})`,
+          id,
+          name.trim().replace(/\s+/g, ' '),
+          cv && cv.code !== 'LEGACY' ? `${slugify(cv.code)}-${slug}`.slice(0, 200) : slug,
+          Date.now(),
+          ...(parent ? [parentId] : []),
+          ...(kind !== 'difficulties' ? [Number(isTest)] : []),
+          ...(cv ? [cv.id] : []),
+        );
+        if (kind === 'courses') {
+          const now = new Date().toISOString();
+          this.run(
+            'INSERT INTO curriculum_versions VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+            'legacy-' + id,
+            id,
+            'LEGACY',
+            'Existing curriculum (unversioned)',
+            null,
+            null,
+            'active',
+            0,
+            1,
+            now,
+            now,
+          );
+        }
+      });
     } catch {
       throw new BankError('Invalid parent or duplicate taxonomy slug', 409);
     }
@@ -149,6 +218,26 @@ export class Bank {
   resolveImport(input: unknown): QuestionDocument {
     if (typeof input !== 'object' || !input) throw new BankError('Import must be a JSON object');
     const copy = structuredClone(input) as Record<string, unknown>;
+    if (copy.schemaVersion === 2) {
+      const envelope = questionExportSchema.safeParse(copy);
+      if (!envelope.success)
+        throw new BankError(
+          envelope.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n'),
+        );
+      const doc = this.validate(envelope.data.document),
+        live = this.curriculum.classification(doc);
+      for (const key of [
+        'course',
+        'curriculumVersion',
+        'semester',
+        'chapter',
+        'topic',
+        'subtopic',
+      ] as const)
+        if (envelope.data.savedClassification[key]?.id !== live[key]?.id)
+          throw new BankError(`Export classification conflicts with ${key} relationship`);
+      return doc;
+    }
     if (copy.classification) {
       const c = copy.classification as Record<string, unknown>;
       if (
@@ -156,7 +245,10 @@ export class Bank {
         !c ||
         Array.isArray(c) ||
         Object.keys(c).some(
-          (k) => !['course', 'semester', 'chapter', 'topic', 'subtopic'].includes(k),
+          (k) =>
+            !['course', 'curriculumVersion', 'semester', 'chapter', 'topic', 'subtopic'].includes(
+              k,
+            ),
         ) ||
         typeof copy.question !== 'object' ||
         !copy.question
@@ -167,14 +259,27 @@ export class Bank {
       for (const key of ['course', 'semester', 'chapter', 'topic', 'subtopic'] as const) {
         if (key === 'subtopic' && !c[key]) continue;
         if (typeof c[key] !== 'string') throw new BankError(`Classification requires ${key}`);
-        const collection = tax[`${key}s` as keyof Taxonomy];
-        const match = collection.find(
+        const collection =
+          tax[`${key}s` as 'courses' | 'semesters' | 'chapters' | 'topics' | 'subtopics'];
+        const matches = collection.filter(
           (t) =>
             (t.id === c[key] ||
               normalize(t.name) === normalize(String(c[key])) ||
               t.slug === normalize(String(c[key]))) &&
-            t.parentId === parent,
+            t.parentId === parent &&
+            (key !== 'semester' ||
+              !c.curriculumVersion ||
+              this.curriculum
+                .versions()
+                .some(
+                  (v) =>
+                    v.id === t.curriculumVersionId &&
+                    (v.id === c.curriculumVersion || v.code === c.curriculumVersion),
+                )),
         );
+        if (matches.length > 1)
+          throw new BankError(`Ambiguous ${key}; supply stable IDs and curriculumVersion`);
+        const match = matches[0];
         if (!match) throw new BankError(`Unknown or inconsistent ${key}: ${c[key]}`);
         if (key === 'topic' || key === 'subtopic') {
           const field = key === 'topic' ? 'topicId' : 'subtopicId',
@@ -284,6 +389,43 @@ export class Bank {
       ].join(' '),
     );
   }
+  refreshSearch() {
+    for (const q of this.all('SELECT id FROM questions'))
+      this.indexQuestion(String(q.id), this.document(String(q.id)));
+  }
+  savedClassification(id: string, version?: number): Classification | undefined {
+    const row = this.one(
+      'SELECT snapshot FROM question_version_classifications WHERE question_id=? AND version_number=?',
+      id,
+      version ?? this.current(id).active_version,
+    );
+    return row ? JSON.parse(String(row.snapshot)) : undefined;
+  }
+  private activeAssignment(doc: QuestionDocument, current?: QuestionDocument) {
+    if (
+      current &&
+      current.question.topicId === doc.question.topicId &&
+      current.question.subtopicId === doc.question.subtopicId
+    )
+      return;
+    const path = this.curriculum.classification(doc),
+      tax = this.taxonomy();
+    if (
+      this.curriculum.versions().find((v) => v.id === path.curriculumVersion.id)?.status ===
+        'retired' ||
+      (['semesters', 'chapters', 'topics', 'subtopics'] as const).some(
+        (k) =>
+          tax[k].find(
+            (t) =>
+              t.id === path[k.slice(0, -1) as 'semester' | 'chapter' | 'topic' | 'subtopic']?.id,
+          )?.status === 'retired',
+      )
+    )
+      throw new BankError(
+        'New assignments cannot use retired curriculum items. Restore the hierarchy or select another topic.',
+        409,
+      );
+  }
   private activate(
     id: string,
     doc: QuestionDocument,
@@ -291,6 +433,7 @@ export class Bank {
     author: string | null,
     version: number,
     isNew = false,
+    classification?: Classification,
   ) {
     const q = doc.question,
       now = new Date().toISOString();
@@ -335,8 +478,20 @@ export class Bank {
       author,
       now,
     );
+    this.run(
+      'INSERT INTO question_version_classifications VALUES(?,?,?)',
+      id,
+      version,
+      JSON.stringify(classification ?? this.curriculum.classification(doc)),
+    );
   }
-  create(input: unknown, note: string, author: string | null = null, confirmApproval = false) {
+  create(
+    input: unknown,
+    note: string,
+    author: string | null = null,
+    confirmApproval = false,
+    classification?: Classification,
+  ) {
     const doc = this.validate(input);
     this.requireNote(note);
     this.requireAuthor(author);
@@ -345,7 +500,23 @@ export class Bank {
     if (this.one('SELECT id FROM questions WHERE question_code=?', doc.question.questionCode))
       throw new BankError('Question code already exists; use the revision workflow', 409);
     const id = randomUUID();
-    this.transaction(() => this.activate(id, doc, note, author, 1, true));
+    this.transaction(() => {
+      this.activeAssignment(doc);
+      if (classification) {
+        const live = this.curriculum.classification(doc);
+        for (const key of [
+          'course',
+          'curriculumVersion',
+          'semester',
+          'chapter',
+          'topic',
+          'subtopic',
+        ] as const)
+          if (classification[key]?.id !== live[key]?.id)
+            throw new BankError(`Saved classification conflicts with ${key} relationship`);
+      }
+      this.activate(id, doc, note, author, 1, true, classification);
+    });
     return { id, version: 1, warnings: warnings(doc) };
   }
   requireNote(note: string) {
@@ -386,6 +557,7 @@ export class Bank {
       throw new BankError('A valid base version is required');
     return this.transaction(() => {
       const current = this.current(id);
+      this.activeAssignment(doc, this.document(id));
       if (current.active_version !== baseVersion)
         throw new BankError('This question changed. Reload before saving.', 409);
       if (doc.question.questionCode !== current.question_code)
@@ -424,6 +596,7 @@ export class Bank {
           409,
         );
       const doc = this.validate(JSON.parse(String(c.snapshot)));
+      if (approve) this.activeAssignment(doc, this.document(String(c.question_id)));
       if (approve)
         this.activate(
           String(c.question_id),
@@ -472,6 +645,16 @@ export class Bank {
   private query(filters: Filters) {
     const clauses: string[] = [];
     const params: SQLInputValue[] = [];
+    if (filters.curriculum) {
+      clauses.push(filters.curriculum === 'active' ? "cv.status='active'" : 'cv.id=?');
+      if (filters.curriculum !== 'active') params.push(filters.curriculum);
+    }
+    if (filters.taxonomyStatus === 'active')
+      clauses.push(
+        "s.status='active' AND c.status='active' AND t.status='active' AND (st.id IS NULL OR st.status='active')",
+      );
+    else if (filters.taxonomyStatus && filters.taxonomyStatus !== 'all')
+      throw new BankError('Invalid taxonomy status filter');
     const fields: Record<string, string> = {
       course: 'co.id',
       semester: 's.id',
@@ -535,14 +718,14 @@ export class Bank {
   list(filters: Filters = {}) {
     const { where, params } = this.query(filters),
       join =
-        ' FROM questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN courses co ON co.id=s.course_id JOIN difficulty_levels d ON d.id=q.difficulty_id LEFT JOIN subtopics st ON st.id=q.subtopic_id';
+        ' FROM questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN courses co ON co.id=s.course_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id JOIN difficulty_levels d ON d.id=q.difficulty_id LEFT JOIN subtopics st ON st.id=q.subtopic_id';
     const page = Number(filters.page ?? 1),
       limit = Number(filters.limit ?? 20);
     if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100)
       throw new BankError('Invalid pagination');
     const total = Number(this.one('SELECT count(*) total' + join + where, ...params)?.total ?? 0);
     const items = this.all(
-      `SELECT q.*,co.name course,s.name semester,c.name chapter,t.name topic,st.name subtopic,d.name difficulty,EXISTS(SELECT 1 FROM solutions x WHERE x.question_id=q.id) has_solution,EXISTS(SELECT 1 FROM hints h WHERE h.question_id=q.id) has_hints,(SELECT url FROM assets a WHERE a.question_id=q.id AND a.kind='original_pdf' LIMIT 1) original_pdf` +
+      `SELECT q.*,co.name course,cv.id curriculum_version_id,cv.name curriculum_version,cv.status curriculum_status,s.name semester,c.name chapter,t.name topic,st.name subtopic,d.name difficulty,EXISTS(SELECT 1 FROM solutions x WHERE x.question_id=q.id) has_solution,EXISTS(SELECT 1 FROM hints h WHERE h.question_id=q.id) has_hints,(SELECT url FROM assets a WHERE a.question_id=q.id AND a.kind='original_pdf' LIMIT 1) original_pdf` +
         join +
         where +
         ' ORDER BY q.updated_at DESC,q.id LIMIT ? OFFSET ?',

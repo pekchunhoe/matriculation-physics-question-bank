@@ -8,7 +8,11 @@ export function setup() {
     circular = bank.addTaxon('topics', 'TEST ONLY Circular Motion', c2, true),
     dynamics = bank.addTaxon('topics', 'TEST ONLY Dynamics', c1, true);
   const subtopic = bank.addTaxon('subtopics', 'TEST ONLY 2D collision', momentum, true);
-  const fixture = (code: string, topicId = momentum, difficultyId = 'hard'): QuestionDocument => ({
+  const fixture = (
+    code: string,
+    topicId: string = momentum,
+    difficultyId = 'hard',
+  ): QuestionDocument => ({
     schemaVersion: 1,
     question: {
       questionCode: code,

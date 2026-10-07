@@ -34,6 +34,8 @@ export function Browser({ tax }: { tax: Taxonomy }) {
   const [filters, setFilters] = useState<Record<string, string>>(() => ({
     status: 'approved',
     course: tax.courses[0]?.id ?? '',
+    curriculum: initial().semester && !initial().curriculum ? '' : 'active',
+    taxonomyStatus: initial().semester && !initial().taxonomyStatus ? 'all' : 'active',
     ...initial(),
   }));
   const [results, setResults] = useState<Results | null>(null),
@@ -44,8 +46,9 @@ export function Browser({ tax }: { tax: Taxonomy }) {
   function update(key: string, value: string) {
     setFilters((previous) => {
       const next = { ...previous, page: '1', [key]: value };
-      if (key === 'course')
+      if (key === 'course' || key === 'curriculum' || key === 'taxonomyStatus')
         for (const k of ['semester', 'chapter', 'topic', 'subtopic']) delete next[k];
+      if (key === 'course') next.curriculum = 'active';
       if (key === 'semester') for (const k of ['chapter', 'topic', 'subtopic']) delete next[k];
       if (key === 'chapter') for (const k of ['topic', 'subtopic']) delete next[k];
       if (key === 'topic') delete next.subtopic;
@@ -87,19 +90,35 @@ export function Browser({ tax }: { tax: Taxonomy }) {
       .then(setCounts)
       .catch((e) => setError(e.message));
   }, [filters.course]);
-  const semesters = tax.semesters.filter((s) => !filters.course || s.parentId === filters.course),
+  const visible = (status?: string) => filters.taxonomyStatus !== 'active' || status !== 'retired';
+  const versions = (tax.curriculumVersions ?? []).filter(
+    (v) =>
+      (!filters.course || v.courseId === filters.course) &&
+      (!filters.curriculum || filters.curriculum === 'active'
+        ? !filters.curriculum || v.status === 'active'
+        : v.id === filters.curriculum),
+  );
+  const semesters = tax.semesters.filter(
+      (s) =>
+        (!filters.course || s.parentId === filters.course) &&
+        visible(s.status) &&
+        (!tax.curriculumVersions || versions.some((v) => v.id === s.curriculumVersionId)),
+    ),
     chapters = tax.chapters.filter(
       (c) =>
+        visible(c.status) &&
         (!filters.semester || c.parentId === filters.semester) &&
         semesters.some((s) => s.id === c.parentId),
     ),
     topics = tax.topics.filter(
       (t) =>
+        visible(t.status) &&
         (!filters.chapter || t.parentId === filters.chapter) &&
         chapters.some((c) => c.id === t.parentId),
     ),
     subtopics = tax.subtopics.filter(
       (t) =>
+        visible(t.status) &&
         topics.some((p) => p.id === t.parentId) &&
         (!filters.topic || filters.topic.split(',').includes(t.parentId!)),
     );
@@ -134,6 +153,36 @@ export function Browser({ tax }: { tax: Taxonomy }) {
         <span className="count-label">{results?.total ?? '—'} matching questions</span>
       </div>
       {select('Course', 'course', tax.courses)}
+      <details className="panel">
+        <summary>Curriculum version and retired items</summary>
+        <div className="form-grid">
+          <Field label="Browse curriculum version">
+            <select
+              value={filters.curriculum ?? ''}
+              onChange={(e) => update('curriculum', e.target.value)}
+            >
+              <option value="active">Active curriculum</option>
+              <option value="">All versions</option>
+              {(tax.curriculumVersions ?? [])
+                .filter((v) => !filters.course || v.courseId === filters.course)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.code} — {v.name} ({v.status})
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Curriculum item visibility">
+            <select
+              value={filters.taxonomyStatus ?? 'all'}
+              onChange={(e) => update('taxonomyStatus', e.target.value)}
+            >
+              <option value="active">Active items</option>
+              <option value="all">Include retired items</option>
+            </select>
+          </Field>
+        </div>
+      </details>
       <div className="semester-grid">
         {semesters.map((s) => (
           <button
@@ -234,7 +283,14 @@ export function Browser({ tax }: { tax: Taxonomy }) {
           </details>
           <button
             className="button"
-            onClick={() => setFilters({ course: filters.course, status: 'approved' })}
+            onClick={() =>
+              setFilters({
+                course: filters.course,
+                status: 'approved',
+                curriculum: 'active',
+                taxonomyStatus: 'active',
+              })
+            }
           >
             Reset filters
           </button>
@@ -261,7 +317,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                     {c.isTest ? ' (test taxonomy)' : ''} · {count('chapter_id', c.id)}
                   </button>
                   {tax.topics
-                    .filter((t) => t.parentId === c.id)
+                    .filter((t) => t.parentId === c.id && visible(t.status))
                     .map((t) => (
                       <button
                         className={

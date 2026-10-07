@@ -24,12 +24,12 @@ The server binds to loopback. This is a trusted local teacher application: Stude
 
 ## Use
 
-1. Add the authoritative chapter, topic and optional subtopic records in **Curriculum**. Select the correct parent for each record. A separate checkbox clearly labels test taxonomy.
+1. Prepare a draft curriculum version in **Curriculum**, import your authoritative hierarchy or add its records, verify it and activate it. Existing unversioned taxonomy is labelled LEGACY. See [curriculum administration](docs/curriculum.md).
 2. Choose **Add question** or **Import JSON**. Enter the original authored content, difficulty and marks. The app never infers difficulty or repairs marks.
 3. Review Student Preview and Teacher View. Student hints reveal one at a time for the whole question or each part.
 4. Save with a revision note. Initial approval requires explicit confirmation and an answer scheme for each leaf part.
 5. Editing an approved question creates a candidate. Compare current and candidate content, enter a reviewing teacher's name, confirm the decision and approve the replacement. The existing approved version remains active until that decision.
-6. Browse by semester, topic and difficulty. Approved is the initial status filter; choose another status or All in More filters to browse drafts or retired content.
+6. Browse by semester, topic and difficulty. Active curriculum and Approved are defaults. Secondary version/visibility controls show old curricula/retired items; More filters controls question statuses.
 
 ## Data and backup
 
@@ -63,8 +63,12 @@ Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank 
 
 - PDF extraction is deliberately unimplemented. `PdfRevisionImportService` defines the validated candidate/diff/review boundary for a later parser adapter. There is no automatic PDF overwrite route.
 - No exam generator, random questions, numerical variants or AI Physics authoring are included.
-- The curriculum manager currently adds records. Renaming/reorganizing existing taxonomy can be implemented later with version-aware classification policy; the UI already derives its hierarchy from database records.
+- Curriculum edits preserve stable IDs. Referenced subtrees cannot move in place; clone/import a new version for major changes. Retirement preserves questions/history. See [editing and migration policy](docs/curriculum.md).
 - Revision diffs compare every structured field. Collections such as parts, solutions, hints and assets appear as complete before/after JSON blocks; a finer per-field collection diff can be added later without changing canonical records.
 - Availability flags are author-controlled and are not inferred from content.
 
 See [architecture](docs/architecture.md) for the schema and revision design.
+
+The supplied Vercel frontend returned HTTP 200 during the audit; taxonomy/question APIs returned HTTP 404. This checkout has no hosted backend/authentication/storage configuration. See [production findings and the pilot](docs/production-and-pilot.md). No deployment or real-data migration occurred. Back up data before the first updated start, which applies migration 002.
+
+See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.

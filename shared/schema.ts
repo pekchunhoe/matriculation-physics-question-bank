@@ -164,8 +164,12 @@ export type Taxon = {
   parentId: string | null;
   order: number;
   isTest: boolean;
+  status?: 'active' | 'retired';
+  revision?: number;
+  curriculumVersionId?: string;
 };
 export type Taxonomy = {
+  curriculumVersions?: import('./curriculum.js').CurriculumVersion[];
   courses: Taxon[];
   semesters: Taxon[];
   chapters: Taxon[];

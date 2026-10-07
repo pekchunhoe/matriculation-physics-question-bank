@@ -2,7 +2,9 @@
 
 ```mermaid
 erDiagram
-    courses ||--o{ semesters : contains
+    courses ||--o{ curriculum_versions : versions
+    courses ||--o{ semesters : validates_membership
+    curriculum_versions ||--o{ semesters : contains
     semesters ||--o{ chapters : contains
     chapters ||--o{ topics : contains
     topics ||--o{ subtopics : contains
@@ -15,12 +17,15 @@ erDiagram
     questions ||--o{ hints : guides
     questions ||--o{ assets : illustrates
     questions ||--o{ question_versions : preserves
+    question_versions ||--|| question_version_classifications : freezes_ancestry
     questions ||--o{ revision_candidates : reviews
     questions ||--o{ question_tags : labels
     tags ||--o{ question_tags : links
 ```
 
 ## Canonical content
+
+See [editable curriculum](curriculum.md) for version lifecycle, guarded edits/imports and frozen classification. Course ancestry now includes the semester's curriculum version; the original parent keys remain compatible.
 
 The active question has normalized metadata, parts, solutions, solution steps, hints, assets and tag links. Each atomic save writes those records and a complete versioned JSON snapshot in one transaction. Detail and historical views read those structured snapshots; browse/search reads the normalized active records. The two representations are synchronized only by the transaction service.
 

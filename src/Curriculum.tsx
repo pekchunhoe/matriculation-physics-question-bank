@@ -2,15 +2,18 @@ import { useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
 import { api, json } from './api';
 import { Field } from './components';
+import { CurriculumVersions, TaxonomyEditor } from './CurriculumTools';
+type TaxonomyKind = Exclude<keyof Taxonomy, 'curriculumVersions'>;
 export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promise<void> }) {
-  const [kind, setKind] = useState<keyof Taxonomy>('chapters'),
+  const [kind, setKind] = useState<TaxonomyKind>('chapters'),
+    [version, setVersion] = useState(''),
     [parent, setParent] = useState(''),
     [name, setName] = useState(''),
     [isTest, setIsTest] = useState(false),
     [error, setError] = useState(''),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
-  const parents: Record<keyof Taxonomy, keyof Taxonomy | null> = {
+  const parents: Record<TaxonomyKind, TaxonomyKind | null> = {
     courses: null,
     semesters: 'courses',
     chapters: 'semesters',
@@ -35,7 +38,12 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
     try {
       await api(
         '/taxonomy/' + kind,
-        json('POST', { name, parentId: parentKind ? parent : null, isTest }),
+        json('POST', {
+          name,
+          parentId: parentKind ? parent : null,
+          isTest,
+          ...(kind === 'semesters' && version ? { curriculumVersionId: version } : {}),
+        }),
       );
       await reload();
       setMessage(name + ' added.');
@@ -58,6 +66,8 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
           </p>
         </div>
       </div>
+      <CurriculumVersions tax={tax} reload={reload} />
+      <TaxonomyEditor tax={tax} reload={reload} />
       <div className="curriculum-layout">
         <section className="panel">
           <h2>Add a curriculum record</h2>
@@ -81,8 +91,9 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
               <select
                 value={kind}
                 onChange={(e) => {
-                  setKind(e.target.value as keyof Taxonomy);
+                  setKind(e.target.value as TaxonomyKind);
                   setParent('');
+                  setVersion('');
                   setMessage('');
                 }}
               >
@@ -95,7 +106,14 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
             </Field>
             {parentKind && (
               <Field label={'Parent ' + parentKind}>
-                <select required value={parent} onChange={(e) => setParent(e.target.value)}>
+                <select
+                  required
+                  value={parent}
+                  onChange={(e) => {
+                    setParent(e.target.value);
+                    setVersion('');
+                  }}
+                >
                   <option value="">Select parent</option>
                   {tax[parentKind].map((t) => (
                     <option key={t.id} value={t.id}>
@@ -103,6 +121,20 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                       {t.isTest ? ' (test taxonomy)' : ''}
                     </option>
                   ))}
+                </select>
+              </Field>
+            )}
+            {kind === 'semesters' && (
+              <Field label="Record curriculum version">
+                <select required value={version} onChange={(e) => setVersion(e.target.value)}>
+                  <option value="">Select version</option>
+                  {(tax.curriculumVersions ?? [])
+                    .filter((v) => v.courseId === parent && v.status !== 'retired')
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.code} — {v.name} ({v.status})
+                      </option>
+                    ))}
                 </select>
               </Field>
             )}
@@ -142,7 +174,14 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                 .map((s) => (
                   <details key={s.id} open>
                     <summary>
-                      {s.name}
+                      <span>{s.name}</span>
+                      {' · ' +
+                        (tax.curriculumVersions?.find((v) => v.id === s.curriculumVersionId)
+                          ?.code ?? '') +
+                        ' · ' +
+                        s.status +
+                        ' · order ' +
+                        s.order}
                       {s.isTest ? ' (test taxonomy)' : ''}
                     </summary>
                     {tax.chapters
@@ -151,6 +190,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                         <details key={c.id} className="tree-level" open>
                           <summary>
                             {c.name}
+                            {' · ' + c.status + ' · order ' + c.order}
                             {c.isTest ? ' (test taxonomy)' : ''}
                           </summary>
                           {tax.topics
@@ -159,6 +199,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                               <div key={t.id} className="tree-level">
                                 <strong>
                                   {t.name}
+                                  {' · ' + t.status + ' · order ' + t.order}
                                   {t.isTest ? ' (test taxonomy)' : ''}
                                 </strong>
                                 {tax.subtopics
@@ -166,6 +207,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                                   .map((st) => (
                                     <p className="tree-level" key={st.id}>
                                       {st.name}
+                                      {' · ' + st.status + ' · order ' + st.order}
                                       {st.isTest ? ' (test taxonomy)' : ''}
                                     </p>
                                   ))}

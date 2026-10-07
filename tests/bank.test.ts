@@ -373,7 +373,7 @@ test('Migration is repeatable and stored records survive reopening', () => {
     const first = new Bank(path);
     first.close();
     const second = new Bank(path);
-    assert.equal(second.all('SELECT * FROM schema_migrations').length, 1);
+    assert.equal(second.all('SELECT * FROM schema_migrations').length, 2);
     assert.equal(second.taxonomy().semesters.length, 2);
     assert.equal(second.one('PRAGMA integrity_check')?.integrity_check, 'ok');
     second.close();

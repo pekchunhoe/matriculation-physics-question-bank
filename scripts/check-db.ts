@@ -10,6 +10,6 @@ assert.equal(
     .length >= 10,
   true,
 );
-assert.equal(bank.one('SELECT count(*) count FROM schema_migrations')?.count, 1);
+assert.equal(bank.one('SELECT count(*) count FROM schema_migrations')?.count, 2);
 bank.close();
 console.log('Migration, relational integrity, indexes, and empty production seed: PASS');
