@@ -52,36 +52,38 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 /** Adds curriculum administration to the existing Bank; question documents stay schema v1. */
 export class CurriculumService {
   constructor(private bank: Bank) {}
-  versions(): CurriculumVersion[] {
-    return this.bank.all('SELECT * FROM curriculum_versions ORDER BY sort_order,name').map((r) => ({
-      id: String(r.id),
-      courseId: String(r.course_id),
-      code: String(r.code),
-      name: String(r.name),
-      effectiveFrom: r.effective_from as string | null,
-      effectiveTo: r.effective_to as string | null,
-      status: r.status as CurriculumVersion['status'],
-      order: Number(r.sort_order),
-      revision: Number(r.revision),
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
-    }));
+  async versions(): Promise<CurriculumVersion[]> {
+    return (await this.bank.all('SELECT * FROM curriculum_versions ORDER BY sort_order,name')).map(
+      (r) => ({
+        id: String(r.id),
+        courseId: String(r.course_id),
+        code: String(r.code),
+        name: String(r.name),
+        effectiveFrom: r.effective_from as string | null,
+        effectiveTo: r.effective_to as string | null,
+        status: r.status as CurriculumVersion['status'],
+        order: Number(r.sort_order),
+        revision: Number(r.revision),
+        createdAt: String(r.created_at),
+        updatedAt: String(r.updated_at),
+      }),
+    );
   }
-  private state() {
+  private async state() {
     return {
-      taxonomy: this.bank.taxonomy(),
-      questions: this.bank.all(
+      taxonomy: await this.bank.taxonomy(),
+      questions: await this.bank.all(
         'SELECT id,active_version,topic_id,subtopic_id FROM questions ORDER BY id',
       ),
-      history: this.bank.all(
+      history: await this.bank.all(
         'SELECT question_id,version_number FROM question_version_classifications ORDER BY question_id,version_number',
       ),
-      candidates: this.bank.all(
+      candidates: await this.bank.all(
         "SELECT id,status,snapshot FROM revision_candidates WHERE status='pending' ORDER BY id",
       ),
     };
   }
-  private versionOf(kind: EditableKind, id: string): string {
+  private async versionOf(kind: EditableKind, id: string): Promise<string> {
     const joins = {
       semesters: 'FROM semesters s',
       chapters: 'FROM chapters c JOIN semesters s ON s.id=c.semester_id',
@@ -91,15 +93,15 @@ export class CurriculumService {
         'FROM subtopics st JOIN topics t ON t.id=st.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id',
     };
     const alias = { semesters: 's', chapters: 'c', topics: 't', subtopics: 'st' }[kind];
-    const row = this.bank.one(
+    const row = await this.bank.one(
       `SELECT s.curriculum_version_id ${joins[kind]} WHERE ${alias}.id=?`,
       id,
     );
     if (!row) throw new BankError('Curriculum record not found', 404);
     return String(row.curriculum_version_id);
   }
-  assertWritableParent(kind: EditableKind, id: string) {
-    const tax = this.bank.taxonomy();
+  async assertWritableParent(kind: EditableKind, id: string) {
+    const tax = await this.bank.taxonomy();
     let row = tax[kind].find((t) => t.id === id);
     if (!row) throw new BankError('Unknown curriculum parent');
     for (let i = editableKinds.indexOf(kind); i >= 0; i--) {
@@ -110,17 +112,19 @@ export class CurriculumService {
         );
       if (i > 0) row = tax[editableKinds[i - 1]].find((t) => t.id === row?.parentId);
     }
-    if (this.versions().find((v) => v.id === row?.curriculumVersionId)?.status === 'retired')
+    if (
+      (await this.versions()).find((v) => v.id === row?.curriculumVersionId)?.status === 'retired'
+    )
       throw new BankError(
         'Restore or create a curriculum version before adding or moving records.',
         409,
       );
   }
-  classification(
+  async classification(
     doc: QuestionDocument,
     provenance: Classification['provenance'] = 'captured',
-  ): Classification {
-    const row = this.bank.one(
+  ): Promise<Classification> {
+    const row = await this.bank.one(
       'SELECT co.id course_id,co.name course_name,co.slug course_slug,cv.id cv_id,cv.name cv_name,cv.code cv_code,s.id semester_id,s.name semester_name,s.slug semester_slug,c.id chapter_id,c.name chapter_name,c.slug chapter_slug,t.id topic_id,t.name topic_name,t.slug topic_slug,st.id subtopic_id,st.name subtopic_name,st.slug subtopic_slug FROM topics t JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN courses co ON co.id=s.course_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id LEFT JOIN subtopics st ON st.id=? AND st.topic_id=t.id WHERE t.id=?',
       doc.question.subtopicId,
       doc.question.topicId,
@@ -145,44 +149,45 @@ export class CurriculumService {
       provenance,
     };
   }
-  impact(kind: EditableKind | 'curriculumVersions', id: string): CurriculumImpact {
-    const tax = this.bank.taxonomy();
+  async impact(kind: EditableKind | 'curriculumVersions', id: string): Promise<CurriculumImpact> {
+    const tax = await this.bank.taxonomy();
     const record =
       kind === 'curriculumVersions'
-        ? this.versions().find((v) => v.id === id)
+        ? (await this.versions()).find((v) => v.id === id)
         : tax[kind].find((t) => t.id === id);
     if (!record) throw new BankError('Curriculum record not found', 404);
-    const versionId = kind === 'curriculumVersions' ? id : this.versionOf(kind, id);
-    const relevant = (d: QuestionDocument) => {
-      const path = this.classification(d);
+    const versionId = kind === 'curriculumVersions' ? id : await this.versionOf(kind, id);
+    const relevant = async (d: QuestionDocument) => {
+      const path = await this.classification(d);
       return kind === 'curriculumVersions'
         ? path.curriculumVersion.id === id
         : path[kind.slice(0, -1) as 'semester' | 'chapter' | 'topic' | 'subtopic']?.id === id;
     };
-    const current = this.bank
-      .all('SELECT id,active_version FROM questions')
-      .filter((q) => relevant(this.bank.document(String(q.id))));
+    let currentQuestions = 0;
+    for (const q of await this.bank.all('SELECT id,active_version FROM questions'))
+      if (await relevant(await this.bank.document(String(q.id)))) currentQuestions++;
     const key = kind === 'curriculumVersions' ? 'curriculumVersion' : kind.slice(0, -1);
-    const history = this.bank
-      .all('SELECT question_id,snapshot FROM question_version_classifications')
-      .filter((r) => JSON.parse(String(r.snapshot))[key]?.id === id);
-    const candidates = this.bank
-      .all("SELECT snapshot FROM revision_candidates WHERE status='pending'")
-      .filter((r) => relevant(JSON.parse(String(r.snapshot))));
-    const descendants = editableKinds.reduce(
-      (count, k) =>
-        count +
-        tax[k].filter((t) =>
+    const history = (
+      await this.bank.all('SELECT question_id,snapshot FROM question_version_classifications')
+    ).filter((r) => JSON.parse(String(r.snapshot))[key]?.id === id);
+    let pendingRevisions = 0;
+    for (const r of await this.bank.all(
+      "SELECT snapshot FROM revision_candidates WHERE status='pending'",
+    ))
+      if (await relevant(JSON.parse(String(r.snapshot)))) pendingRevisions++;
+    let descendants = 0;
+    for (const k of editableKinds)
+      for (const t of tax[k])
+        if (
           kind === 'curriculumVersions'
-            ? this.versionOf(k, t.id) === id
+            ? (await this.versionOf(k, t.id)) === id
             : editableKinds.indexOf(k) > editableKinds.indexOf(kind) &&
-              this.isDescendant(k, t.id, kind, id, tax),
-        ).length,
-      0,
-    );
+              this.isDescendant(k, t.id, kind, id, tax)
+        )
+          descendants++;
     const previous =
       kind === 'curriculumVersions'
-        ? this.versions().find(
+        ? (await this.versions()).find(
             (v) =>
               v.id !== id &&
               v.courseId === (record as CurriculumVersion).courseId &&
@@ -192,9 +197,9 @@ export class CurriculumService {
     return {
       id,
       kind,
-      currentQuestions: current.length,
+      currentQuestions,
       historicalQuestions: new Set(history.map((r) => r.question_id)).size,
-      pendingRevisions: candidates.length,
+      pendingRevisions,
       descendants,
       revision: record.revision ?? 1,
       versionId,
@@ -203,11 +208,12 @@ export class CurriculumService {
             previousActive: {
               id: previous.id,
               name: previous.name,
-              currentQuestions: this.bank.list({ curriculum: previous.id, limit: '1' }).total,
+              currentQuestions: (await this.bank.list({ curriculum: previous.id, limit: '1' }))
+                .total,
             },
           }
         : {}),
-      token: hash({ kind, id, state: this.state() }),
+      token: hash({ kind, id, state: await this.state() }),
     };
   }
   private isDescendant(
@@ -234,7 +240,7 @@ export class CurriculumService {
         409,
       );
   }
-  private event(
+  private async event(
     kind: string,
     id: string,
     before: unknown,
@@ -242,7 +248,7 @@ export class CurriculumService {
     note: string,
     author: string | null,
   ) {
-    this.bank.run(
+    await this.bank.run(
       'INSERT INTO curriculum_events VALUES(?,?,?,?,?,?,?,?)',
       randomUUID(),
       kind,
@@ -254,14 +260,14 @@ export class CurriculumService {
       new Date().toISOString(),
     );
   }
-  edit(kind: EditableKind, id: string, input: unknown) {
+  async edit(kind: EditableKind, id: string, input: unknown) {
     const edit = parse(taxonomyEditSchema, input);
     this.bank.requireNote(edit.note);
     this.bank.requireAuthor(edit.author ?? null);
-    return this.bank.transaction(() => {
-      const impact = this.impact(kind, id);
+    return await this.bank.transaction(async () => {
+      const impact = await this.impact(kind, id);
       this.confirm(impact, edit.expectedRevision, edit.impactToken, edit.confirmImpact);
-      const before = this.bank.taxonomy()[kind].find((t) => t.id === id)!;
+      const before = (await this.bank.taxonomy())[kind].find((t) => t.id === id)!;
       const next = {
         ...before,
         name: edit.name?.trim().replace(/\s+/g, ' ') ?? before.name,
@@ -281,14 +287,14 @@ export class CurriculumService {
             409,
           );
         const parentKind = editableKinds[editableKinds.indexOf(kind) - 1];
-        if (this.versionOf(parentKind, next.parentId!) !== impact.versionId)
+        if ((await this.versionOf(parentKind, next.parentId!)) !== impact.versionId)
           throw new BankError(
             'Moves must stay within one curriculum version; clone or import a new version for syllabus changes.',
             409,
           );
-        this.assertWritableParent(parentKind, next.parentId!);
+        await this.assertWritableParent(parentKind, next.parentId!);
       }
-      const siblings = this.bank.taxonomy()[kind];
+      const siblings = (await this.bank.taxonomy())[kind];
       if (
         siblings.some(
           (t) =>
@@ -307,7 +313,7 @@ export class CurriculumService {
       )
         throw new BankError('No curriculum changes to save');
       try {
-        this.bank.run(
+        await this.bank.run(
           `UPDATE ${kind} SET name=?,sort_order=?,status=?,${parents[kind]}=?,revision=revision+1 WHERE id=?`,
           next.name,
           next.order,
@@ -315,10 +321,13 @@ export class CurriculumService {
           next.parentId,
           id,
         );
-      } catch (error) {
-        throw new BankError(`Curriculum update rejected: ${(error as Error).message}`, 409);
+      } catch {
+        throw new BankError(
+          'Curriculum update rejected by a relationship or uniqueness constraint',
+          409,
+        );
       }
-      this.event(
+      await this.event(
         kind,
         id,
         before,
@@ -326,18 +335,18 @@ export class CurriculumService {
         edit.note,
         edit.author ?? null,
       );
-      this.bank.refreshSearch();
+      await this.bank.refreshSearch();
       return { id, impact };
     });
   }
-  createVersion(input: unknown, note: string, author: string | null = null) {
+  async createVersion(input: unknown, note: string, author: string | null = null) {
     const value = parse(curriculumVersionSchema, input);
     if (value.status !== 'draft')
       throw new BankError(
         'Create new curriculum versions as draft, then review and activate them.',
       );
     if (value.cloneFromId) {
-      const source = this.export(value.cloneFromId);
+      const source = await this.export(value.cloneFromId);
       if (source.course.id !== value.courseId)
         throw new BankError('Clone source must belong to the same course');
       const { courseId, cloneFromId, ...version } = value;
@@ -358,23 +367,23 @@ export class CurriculumService {
           }
         }
       }
-      const plan = this.plan(doc);
-      return this.import(plan.document, plan.token, note, author);
+      const plan = await this.plan(doc);
+      return await this.import(plan.document, plan.token, note, author);
     }
-    const course = this.bank.taxonomy().courses.find((c) => c.id === value.courseId);
+    const course = (await this.bank.taxonomy()).courses.find((c) => c.id === value.courseId);
     if (!course) throw new BankError('Unknown course');
     const { courseId, cloneFromId, ...version } = value;
     void courseId;
     void cloneFromId;
-    const plan = this.plan({
+    const plan = await this.plan({
       schemaVersion: 1,
       course: { id: course.id, name: course.name, slug: course.slug },
       curriculumVersion: version,
       semesters: [],
     });
-    return this.import(plan.document, plan.token, note, author);
+    return await this.import(plan.document, plan.token, note, author);
   }
-  editVersion(id: string, input: unknown) {
+  async editVersion(id: string, input: unknown) {
     const schema = z
       .object({
         name: z.string().min(1).max(200),
@@ -396,11 +405,11 @@ export class CurriculumService {
       (edit.effectiveFrom && edit.effectiveTo && edit.effectiveFrom > edit.effectiveTo)
     )
       throw new BankError('Invalid name or effective dates');
-    return this.bank.transaction(() => {
-      const before = this.versions().find((v) => v.id === id);
+    return await this.bank.transaction(async () => {
+      const before = (await this.versions()).find((v) => v.id === id);
       if (!before) throw new BankError('Curriculum version not found', 404);
       this.confirm(
-        this.impact('curriculumVersions', id),
+        await this.impact('curriculumVersions', id),
         edit.expectedRevision,
         edit.impactToken,
         edit.confirmImpact,
@@ -409,7 +418,7 @@ export class CurriculumService {
         throw new BankError('Retire an active version; draft is reserved for preparation.');
       const now = new Date().toISOString();
       if (edit.status === 'active' && before.status !== 'active') {
-        const previous = this.versions().find(
+        const previous = (await this.versions()).find(
           (v) => v.courseId === before.courseId && v.status === 'active',
         );
         if (previous) {
@@ -419,12 +428,12 @@ export class CurriculumService {
               'Confirm that activation retires the previous active curriculum and changes default browsing.',
               409,
             );
-          this.bank.run(
+          await this.bank.run(
             "UPDATE curriculum_versions SET status='retired',revision=revision+1,updated_at=? WHERE id=?",
             now,
             previous.id,
           );
-          this.event(
+          await this.event(
             'curriculumVersions',
             previous.id,
             previous,
@@ -434,7 +443,7 @@ export class CurriculumService {
           );
         }
       }
-      this.bank.run(
+      await this.bank.run(
         'UPDATE curriculum_versions SET name=?,effective_from=?,effective_to=?,status=?,sort_order=?,revision=revision+1,updated_at=? WHERE id=?',
         edit.name.trim(),
         edit.effectiveFrom,
@@ -444,13 +453,13 @@ export class CurriculumService {
         now,
         id,
       );
-      this.event('curriculumVersions', id, before, edit, edit.note, edit.author ?? null);
+      await this.event('curriculumVersions', id, before, edit, edit.note, edit.author ?? null);
       return { id };
     });
   }
-  export(id: string): CurriculumDocument {
-    const tax = this.bank.taxonomy(),
-      v = this.versions().find((v) => v.id === id);
+  async export(id: string): Promise<CurriculumDocument> {
+    const tax = await this.bank.taxonomy(),
+      v = (await this.versions()).find((v) => v.id === id);
     if (!v) throw new BankError('Curriculum version not found', 404);
     const course = tax.courses.find((c) => c.id === v.courseId)!;
     const node = (t: Taxon) => ({
@@ -491,9 +500,9 @@ export class CurriculumService {
         })),
     };
   }
-  plan(input: unknown): CurriculumPlan {
+  async plan(input: unknown): Promise<CurriculumPlan> {
     const doc = parse(curriculumImportSchema, input),
-      tax = this.bank.taxonomy();
+      tax = await this.bank.taxonomy();
     const course = tax.courses.find(
       (c) => c.id === doc.course.id || (!doc.course.id && c.slug === doc.course.slug),
     );
@@ -507,7 +516,9 @@ export class CurriculumService {
       );
     doc.course = { id: course.id, slug: course.slug, name: course.name };
     if (
-      this.versions().some((v) => v.courseId === course.id && v.code === doc.curriculumVersion.code)
+      (await this.versions()).some(
+        (v) => v.courseId === course.id && v.code === doc.curriculumVersion.code,
+      )
     )
       throw new BankError(
         'Curriculum code already exists for this course. Imports create a new version; they never overwrite it.',
@@ -523,7 +534,7 @@ export class CurriculumService {
       const valueId = value ?? randomUUID();
       if (
         seenIds.has(valueId) ||
-        this.versions().some((v) => v.id === valueId) ||
+        (tax.curriculumVersions ?? []).some((v) => v.id === valueId) ||
         editableKinds.some((k) => tax[k].some((t) => t.id === valueId))
       )
         throw new BankError(`Duplicate or existing curriculum ID: ${valueId}`, 409);
@@ -568,7 +579,7 @@ export class CurriculumService {
       throw new BankError('Curriculum import is limited to 10000 records');
     return {
       document: doc,
-      token: hash({ doc, state: this.state() }),
+      token: hash({ doc, state: await this.state() }),
       counts,
       warnings: [
         'Creates a new draft curriculum. Existing questions and taxonomy remain unchanged.',
@@ -579,11 +590,11 @@ export class CurriculumService {
       ],
     };
   }
-  import(input: unknown, token: string, note: string, author: string | null = null) {
+  async import(input: unknown, token: string, note: string, author: string | null = null) {
     this.bank.requireNote(note);
     this.bank.requireAuthor(author);
-    return this.bank.transaction(() => {
-      const plan = this.plan(input);
+    return await this.bank.transaction(async () => {
+      const plan = await this.plan(input);
       if (plan.token !== token)
         throw new BankError(
           'Curriculum import preview is stale. Validate the original JSON again.',
@@ -592,7 +603,7 @@ export class CurriculumService {
       const doc = plan.document,
         v = doc.curriculumVersion,
         now = new Date().toISOString();
-      this.bank.run(
+      await this.bank.run(
         'INSERT INTO curriculum_versions VALUES(?,?,?,?,?,?,?,?,?,?,?)',
         v.id!,
         doc.course.id!,
@@ -607,7 +618,7 @@ export class CurriculumService {
         now,
       );
       for (const s of doc.semesters) {
-        this.bank.run(
+        await this.bank.run(
           'INSERT INTO semesters(id,course_id,curriculum_version_id,name,slug,sort_order,is_test,status) VALUES(?,?,?,?,?,?,?,?)',
           s.id!,
           doc.course.id!,
@@ -619,7 +630,7 @@ export class CurriculumService {
           s.status,
         );
         for (const c of s.chapters) {
-          this.bank.run(
+          await this.bank.run(
             'INSERT INTO chapters(id,semester_id,name,slug,sort_order,is_test,status) VALUES(?,?,?,?,?,?,?)',
             c.id!,
             s.id!,
@@ -630,7 +641,7 @@ export class CurriculumService {
             c.status,
           );
           for (const t of c.topics) {
-            this.bank.run(
+            await this.bank.run(
               'INSERT INTO topics(id,chapter_id,name,slug,sort_order,is_test,status) VALUES(?,?,?,?,?,?,?)',
               t.id!,
               c.id!,
@@ -641,7 +652,7 @@ export class CurriculumService {
               t.status,
             );
             for (const st of t.subtopics)
-              this.bank.run(
+              await this.bank.run(
                 'INSERT INTO subtopics(id,topic_id,name,slug,sort_order,is_test,status) VALUES(?,?,?,?,?,?,?)',
                 st.id!,
                 t.id!,
@@ -654,7 +665,7 @@ export class CurriculumService {
           }
         }
       }
-      this.event('curriculumVersions', v.id!, null, doc, note, author);
+      await this.event('curriculumVersions', v.id!, null, doc, note, author);
       return { id: v.id!, counts: plan.counts };
     });
   }

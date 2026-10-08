@@ -49,14 +49,14 @@ export class PdfRevisionImportService {
       );
     if (!/^\/uploads\/[a-zA-Z0-9.-]+\.pdf$/.test(pdfUrl))
       throw new BankError('Use an uploaded revised PDF');
-    const candidate = this.bank.resolveImport(await this.extractor.extract(pdfUrl));
-    const result = this.bank.save(questionId, candidate, note, baseVersion, author, 'pdf');
+    const candidate = await this.bank.resolveImport(await this.extractor.extract(pdfUrl));
+    const result = await this.bank.save(questionId, candidate, note, baseVersion, author, 'pdf');
     if ('candidateId' in result && result.candidateId)
-      this.bank.run(
+      await this.bank.run(
         'UPDATE revision_candidates SET source_pdf_url=? WHERE id=?',
         pdfUrl,
         result.candidateId,
       );
-    return { ...result, diff: compareDocuments(this.bank.document(questionId), candidate) };
+    return { ...result, diff: compareDocuments(await this.bank.document(questionId), candidate) };
   }
 }

@@ -1,161 +1,171 @@
+import { createTestBank } from './test-bank.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Bank } from '../server/database.js';
 import { compareDocuments, PdfRevisionImportService } from '../server/revisions.js';
 import { warnings } from '../shared/schema.js';
 import { seedTests, setup } from './fixtures.js';
 
-test('Semester 1, Semester 2 and All filter by inherited taxonomy', () => {
-  const { bank } = seedTests();
+test('Semester 1, Semester 2 and All filter by inherited taxonomy', async () => {
+  const { bank } = await seedTests();
   try {
-    assert.equal(bank.list({ semester: 'semester-1' }).total, 4);
-    assert.equal(bank.list({ semester: 'semester-2' }).total, 3);
-    assert.equal(bank.list().total, 7);
+    assert.equal((await bank.list({ semester: 'semester-1' })).total, 4);
+    assert.equal((await bank.list({ semester: 'semester-2' })).total, 3);
+    assert.equal((await bank.list()).total, 7);
     assert.ok(
-      bank.list({ semester: 'semester-1' }).items.every((q) => q.semester === 'Semester 1'),
+      (await bank.list({ semester: 'semester-1' })).items.every((q) => q.semester === 'Semester 1'),
     );
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Topic, chapter and subtopic filters narrow the hierarchy', () => {
-  const { bank, momentum, c1, subtopic } = seedTests();
+test('Topic, chapter and subtopic filters narrow the hierarchy', async () => {
+  const { bank, momentum, c1, subtopic } = await seedTests();
   try {
-    assert.equal(bank.list({ topic: momentum }).total, 3);
-    assert.equal(bank.list({ chapter: c1 }).total, 4);
-    assert.equal(bank.list({ subtopic }).total, 3);
+    assert.equal((await bank.list({ topic: momentum })).total, 3);
+    assert.equal((await bank.list({ chapter: c1 })).total, 4);
+    assert.equal((await bank.list({ subtopic })).total, 3);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 for (const difficulty of ['easy', 'medium', 'hard'])
-  test(`${difficulty} is a controlled difficulty filter`, () => {
-    const { bank } = seedTests();
+  test(`${difficulty} is a controlled difficulty filter`, async () => {
+    const { bank } = await seedTests();
     try {
-      assert.ok(bank.list({ difficulty }).items.every((q) => q.difficulty_id === difficulty));
-      assert.ok(bank.list({ difficulty }).total > 0);
+      assert.ok(
+        (await bank.list({ difficulty })).items.every((q) => q.difficulty_id === difficulty),
+      );
+      assert.ok((await bank.list({ difficulty })).total > 0);
     } finally {
-      bank.close();
+      await bank.close();
     }
   });
-test('Semester + Momentum + Hard and Semester 2 + Medium combine with AND', () => {
-  const { bank, momentum, circular } = seedTests();
+test('Semester + Momentum + Hard and Semester 2 + Medium combine with AND', async () => {
+  const { bank, momentum, circular } = await seedTests();
   try {
     assert.equal(
-      bank.list({ semester: 'semester-1', topic: momentum, difficulty: 'hard', status: 'approved' })
-        .total,
+      (
+        await bank.list({
+          semester: 'semester-1',
+          topic: momentum,
+          difficulty: 'hard',
+          status: 'approved',
+        })
+      ).total,
       1,
     );
     assert.equal(
-      bank.list({ semester: 'semester-2', topic: circular, difficulty: 'medium' }).total,
+      (await bank.list({ semester: 'semester-2', topic: circular, difficulty: 'medium' })).total,
       1,
     );
-    assert.equal(bank.list({ semester: 'semester-2', topic: momentum }).total, 0);
+    assert.equal((await bank.list({ semester: 'semester-2', topic: momentum })).total, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Search includes wording, code, chapter, topic, subtopic and tags with filters', () => {
-  const { bank, momentum } = seedTests();
+test('Search includes wording, code, chapter, topic, subtopic and tags with filters', async () => {
+  const { bank, momentum } = await seedTests();
   try {
     for (const q of ['2D collision', 'TEST-S1-2', 'Momentum', 'collision'])
-      assert.ok(bank.list({ q, topic: momentum, difficulty: 'hard' }).total === 1);
-    assert.equal(bank.list({ q: 'no such phrase', semester: 'semester-1' }).total, 0);
-    assert.doesNotThrow(() => bank.list({ q: '" OR * ( AND' }));
+      assert.ok((await bank.list({ q, topic: momentum, difficulty: 'hard' })).total === 1);
+    assert.equal((await bank.list({ q: 'no such phrase', semester: 'semester-1' })).total, 0);
+    await assert.doesNotReject(async () => await bank.list({ q: '" OR * ( AND' }));
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Marks, tags, type, availability and status combine; invalid ranges fail', () => {
-  const { bank } = seedTests();
+test('Marks, tags, type, availability and status combine; invalid ranges fail', async () => {
+  const { bank } = await seedTests();
   try {
     assert.equal(
-      bank.list({
-        minMarks: '2',
-        maxMarks: '2',
-        tags: 'collision,TEST ONLY',
-        type: 'structured',
-        diagram: 'false',
-        status: 'approved',
-      }).total,
+      (
+        await bank.list({
+          minMarks: '2',
+          maxMarks: '2',
+          tags: 'collision,TEST ONLY',
+          type: 'structured',
+          diagram: 'false',
+          status: 'approved',
+        })
+      ).total,
       7,
     );
-    assert.equal(bank.list({ minMarks: '3' }).total, 0);
-    assert.throws(() => bank.list({ minMarks: '4', maxMarks: '2' }));
-    assert.throws(() => bank.list({ minMarks: 'NaN' }));
-    assert.throws(() => bank.list({ diagram: '1' }));
+    assert.equal((await bank.list({ minMarks: '3' })).total, 0);
+    await assert.rejects(async () => await bank.list({ minMarks: '4', maxMarks: '2' }));
+    await assert.rejects(async () => await bank.list({ minMarks: 'NaN' }));
+    await assert.rejects(async () => await bank.list({ diagram: '1' }));
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Pagination stays server-side and counts are derived from records', () => {
-  const { bank } = seedTests();
+test('Pagination stays server-side and counts are derived from records', async () => {
+  const { bank } = await seedTests();
   try {
-    const a = bank.list({ limit: '2', page: '1' }),
-      b = bank.list({ limit: '2', page: '2' });
+    const a = await bank.list({ limit: '2', page: '1' }),
+      b = await bank.list({ limit: '2', page: '2' });
     assert.equal(a.total, 7);
     assert.equal(a.items.length, 2);
     assert.ok(a.items.every((x) => !b.items.some((y) => y.id === x.id)));
     assert.equal(
-      bank.counts().reduce((s, r) => s + Number(r.count), 0),
+      (await bank.counts()).reduce((s, r) => s + Number(r.count), 0),
       7,
     );
-    assert.throws(() => bank.list({ limit: '1000' }));
+    await assert.rejects(async () => await bank.list({ limit: '1000' }));
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Taxonomy parent relationships and normalized uniqueness are enforced', () => {
-  const { bank, momentum, c1 } = setup();
+test('Taxonomy parent relationships and normalized uniqueness are enforced', async () => {
+  const { bank, momentum, c1 } = await setup();
   try {
-    assert.equal(bank.taxonomy().topics.find((t) => t.id === momentum)?.parentId, c1);
-    assert.equal(bank.taxonomy().chapters.find((c) => c.id === c1)?.parentId, 'semester-1');
-    assert.throws(() => bank.addTaxon('topics', '  TEST  ONLY momentum ', c1));
-    assert.throws(() => bank.addTaxon('topics', 'Invalid topic', 'missing'));
-    assert.equal(bank.taxonomy().topics.length, 3);
+    assert.equal((await bank.taxonomy()).topics.find((t) => t.id === momentum)?.parentId, c1);
+    assert.equal((await bank.taxonomy()).chapters.find((c) => c.id === c1)?.parentId, 'semester-1');
+    await assert.rejects(async () => await bank.addTaxon('topics', '  TEST  ONLY momentum ', c1));
+    await assert.rejects(async () => await bank.addTaxon('topics', 'Invalid topic', 'missing'));
+    assert.equal((await bank.taxonomy()).topics.length, 3);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('New courses, semesters and difficulty levels require no UI-specific schema changes', () => {
-  const { bank, fixture, momentum } = setup();
+test('New courses, semesters and difficulty levels require no UI-specific schema changes', async () => {
+  const { bank, fixture, momentum } = await setup();
   try {
-    const course = bank.addTaxon('courses', 'Test extra course', null, true);
-    const semester = bank.addTaxon('semesters', 'Test Semester 3', course, true);
-    const chapter = bank.addTaxon('chapters', 'Test chapter', semester, true);
-    const topic = bank.addTaxon('topics', 'Test topic', chapter, true);
-    const level = bank.addTaxon('difficulties', 'Extension', null);
-    bank.create(fixture('TEST-EXTENSION', topic, level), 'Test', null, true);
-    assert.equal(bank.list({ course, semester, difficulty: level }).total, 1);
-    assert.equal(bank.list({ topic: momentum }).total, 0);
+    const course = await bank.addTaxon('courses', 'Test extra course', null, true);
+    const semester = await bank.addTaxon('semesters', 'Test Semester 3', course, true);
+    const chapter = await bank.addTaxon('chapters', 'Test chapter', semester, true);
+    const topic = await bank.addTaxon('topics', 'Test topic', chapter, true);
+    const level = await bank.addTaxon('difficulties', 'Extension', null);
+    await bank.create(fixture('TEST-EXTENSION', topic, level), 'Test', null, true);
+    assert.equal((await bank.list({ course, semester, difficulty: level })).total, 1);
+    assert.equal((await bank.list({ topic: momentum })).total, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Structured imports preserve content, equations, difficulty and authored marks', () => {
-  const { bank, fixture } = setup();
+test('Structured imports preserve content, equations, difficulty and authored marks', async () => {
+  const { bank, fixture } = await setup();
   try {
     const input = fixture('TEST-IMPORT');
     input.question.totalMarks = 5;
-    const result = bank.create(bank.resolveImport(input), 'Import', null, true);
-    assert.deepEqual(bank.document(result.id), input);
+    const result = await bank.create(await bank.resolveImport(input), 'Import', null, true);
+    assert.deepEqual(await bank.document(result.id), input);
     assert.ok(result.warnings[0].includes('Part marks total 2'));
     assert.equal(warnings(input).length, 1);
-    assert.equal(bank.all('SELECT * FROM question_parts').length, 1);
-    assert.equal(bank.all('SELECT * FROM solution_steps').length, 1);
+    assert.equal((await bank.all('SELECT * FROM question_parts')).length, 1);
+    assert.equal((await bank.all('SELECT * FROM solution_steps')).length, 1);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Duplicate code, invalid difficulty, marks, parts, solutions, assets and LaTeX reject imports atomically', () => {
-  const { bank, fixture, circular, subtopic } = setup();
+test('Duplicate code, invalid difficulty, marks, parts, solutions, assets and LaTeX reject imports atomically', async () => {
+  const { bank, fixture, circular, subtopic } = await setup();
   try {
-    bank.create(fixture('TEST-DUP'), 'Test', null, true);
-    assert.throws(
-      () => bank.create(fixture('TEST-DUP'), 'Duplicate', null, true),
+    await bank.create(fixture('TEST-DUP'), 'Test', null, true);
+    await assert.rejects(
+      async () => await bank.create(fixture('TEST-DUP'), 'Duplicate', null, true),
       /already exists/,
     );
     const variants = [
@@ -182,16 +192,16 @@ test('Duplicate code, invalid difficulty, marks, parts, solutions, assets and La
     for (const mutate of variants) {
       const doc = fixture('TEST-INVALID');
       mutate(doc);
-      assert.throws(() => bank.create(doc, 'Invalid', null, true));
+      await assert.rejects(async () => await bank.create(doc, 'Invalid', null, true));
     }
-    assert.equal(bank.list().total, 1);
-    assert.equal(bank.all('SELECT * FROM question_versions').length, 1);
+    assert.equal((await bank.list()).total, 1);
+    assert.equal((await bank.all('SELECT * FROM question_versions')).length, 1);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Import classification resolves existing normalized names and rejects semester/topic conflicts', () => {
-  const { bank, fixture } = setup();
+test('Import classification resolves existing normalized names and rejects semester/topic conflicts', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-NAMES');
     const input = {
@@ -205,97 +215,104 @@ test('Import classification resolves existing normalized names and rejects semes
         subtopic: 'TEST ONLY 2D collision',
       },
     };
-    assert.deepEqual(bank.resolveImport(input), doc);
-    assert.throws(
-      () =>
-        bank.resolveImport({
+    assert.deepEqual(await bank.resolveImport(input), doc);
+    await assert.rejects(
+      async () =>
+        await bank.resolveImport({
           ...input,
           classification: { ...input.classification, semester: 'semester-2' },
         }),
       /Unknown or inconsistent/,
     );
-    assert.equal(bank.taxonomy().topics.length, 3);
+    assert.equal((await bank.taxonomy()).topics.length, 3);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Approved creation requires explicit approval and answers for leaf parts', () => {
-  const { bank, fixture } = setup();
+test('Approved creation requires explicit approval and answers for leaf parts', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-APPROVE');
-    assert.throws(() => bank.create(doc, 'Test'), /approval/);
+    await assert.rejects(async () => await bank.create(doc, 'Test'), /approval/);
     doc.solutions = [];
-    assert.throws(() => bank.create(doc, 'Test', null, true), /answer scheme/);
-    assert.equal(bank.list().total, 0);
+    await assert.rejects(async () => await bank.create(doc, 'Test', null, true), /answer scheme/);
+    assert.equal((await bank.list()).total, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Meaningful draft save creates one immutable snapshot; unchanged content does not create a version', () => {
-  const { bank, fixture } = setup();
+test('Meaningful draft save creates one immutable snapshot; unchanged content does not create a version', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-DRAFT');
     doc.question.status = 'draft';
-    const { id } = bank.create(doc, 'Initial');
+    const { id } = await bank.create(doc, 'Initial');
     doc.question.title = 'TEST ONLY revised title';
-    bank.save(id, doc, 'Revision', 1, 'Teacher');
-    assert.equal(bank.current(id).active_version, 2);
-    assert.equal(bank.document(id, 1).question.title, 'TEST ONLY TEST-DRAFT');
-    assert.equal(bank.document(id, 2).question.title, 'TEST ONLY revised title');
-    assert.throws(() => bank.save(id, doc, 'No change', 2), /No content changes/);
-    assert.equal(bank.versions(id).length, 2);
-    assert.throws(
-      () =>
-        bank.run('UPDATE question_versions SET change_note=? WHERE question_id=?', 'changed', id),
+    await bank.save(id, doc, 'Revision', 1, 'Teacher');
+    assert.equal((await bank.current(id)).active_version, 2);
+    assert.equal((await bank.document(id, 1)).question.title, 'TEST ONLY TEST-DRAFT');
+    assert.equal((await bank.document(id, 2)).question.title, 'TEST ONLY revised title');
+    await assert.rejects(
+      async () => await bank.save(id, doc, 'No change', 2),
+      /No content changes/,
+    );
+    assert.equal((await bank.versions(id)).length, 2);
+    await assert.rejects(
+      async () =>
+        await bank.run(
+          'UPDATE question_versions SET change_note=? WHERE question_id=?',
+          'changed',
+          id,
+        ),
       /immutable/,
     );
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Approved manual and JSON revisions never overwrite active content before human review', () => {
-  const { bank, fixture } = setup();
+test('Approved manual and JSON revisions never overwrite active content before human review', async () => {
+  const { bank, fixture } = await setup();
   try {
     const original = fixture('TEST-REVIEW');
-    const { id } = bank.create(original, 'Approved', null, true);
+    const { id } = await bank.create(original, 'Approved', null, true);
     const revised = structuredClone(original);
     revised.question.title = 'TEST ONLY revised';
-    const result = bank.save(id, revised, 'Change title', 1, 'Author', 'json');
+    const result = await bank.save(id, revised, 'Change title', 1, 'Author', 'json');
     assert.ok(result.pending && result.candidateId);
-    assert.deepEqual(bank.document(id), original);
-    assert.equal(bank.versions(id).length, 1);
-    assert.throws(() => bank.review(result.candidateId!, true, ''), /teacher/);
-    bank.review(result.candidateId!, true, 'Reviewing teacher');
-    assert.deepEqual(bank.document(id), revised);
-    assert.deepEqual(bank.document(id, 1), original);
-    assert.equal(bank.versions(id).length, 2);
-    assert.equal(bank.current(id).active_version, 2);
+    assert.deepEqual(await bank.document(id), original);
+    assert.equal((await bank.versions(id)).length, 1);
+    await assert.rejects(async () => await bank.review(result.candidateId!, true, ''), /teacher/);
+    await bank.review(result.candidateId!, true, 'Reviewing teacher');
+    assert.deepEqual(await bank.document(id), revised);
+    assert.deepEqual(await bank.document(id, 1), original);
+    assert.equal((await bank.versions(id)).length, 2);
+    assert.equal((await bank.current(id)).active_version, 2);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Rejected and stale candidates preserve the active version, and stable codes cannot change', () => {
-  const { bank, fixture } = setup();
+test('Rejected and stale candidates preserve the active version, and stable codes cannot change', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-STALE');
-    const { id } = bank.create(doc, 'Initial', null, true);
+    const { id } = await bank.create(doc, 'Initial', null, true);
     doc.question.title = 'TEST ONLY candidate';
-    const a = bank.save(id, doc, 'A', 1);
+    const a = await bank.save(id, doc, 'A', 1);
     doc.question.title = 'TEST ONLY candidate B';
-    const b = bank.save(id, doc, 'B', 1);
-    bank.review(a.candidateId!, true, 'Teacher');
-    assert.throws(() => bank.review(b.candidateId!, true, 'Teacher'), /stale/);
-    bank.review(b.candidateId!, false, 'Teacher');
-    assert.equal(bank.current(id).active_version, 2);
-    assert.throws(() => bank.save(id, doc, 'Old editor', 1), /changed/);
+    const b = await bank.save(id, doc, 'B', 1);
+    await bank.review(a.candidateId!, true, 'Teacher');
+    await assert.rejects(async () => await bank.review(b.candidateId!, true, 'Teacher'), /stale/);
+    await bank.review(b.candidateId!, false, 'Teacher');
+    assert.equal((await bank.current(id)).active_version, 2);
+    await assert.rejects(async () => await bank.save(id, doc, 'Old editor', 1), /changed/);
     doc.question.questionCode = 'TEST-CHANGED';
-    assert.throws(() => bank.save(id, doc, 'Code change', 2), /stable/);
+    await assert.rejects(async () => await bank.save(id, doc, 'Code change', 2), /stable/);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Nested parts, per-part hints and answer diagrams survive revision roundtrip', () => {
-  const { bank, fixture } = setup();
+test('Nested parts, per-part hints and answer diagrams survive revision roundtrip', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-NESTED');
     doc.question.status = 'draft';
@@ -316,36 +333,36 @@ test('Nested parts, per-part hints and answer diagrams survive revision roundtri
       mime: 'image/svg+xml',
       order: 0,
     });
-    const { id } = bank.create(doc, 'Nested');
-    assert.deepEqual(bank.document(id), doc);
-    assert.equal(bank.all('PRAGMA foreign_key_check').length, 0);
+    const { id } = await bank.create(doc, 'Nested');
+    assert.deepEqual(await bank.document(id), doc);
+    assert.equal((await bank.all('PRAGMA foreign_key_check')).length, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Database transactions roll back a failed content write completely', () => {
-  const { bank, fixture } = setup();
+test('Database transactions roll back a failed content write completely', async () => {
+  const { bank, fixture } = await setup();
   try {
-    bank.db.exec(
+    await bank.db.exec(
       "CREATE TRIGGER fail_parts BEFORE INSERT ON question_parts BEGIN SELECT RAISE(ABORT,'forced test failure'); END;",
     );
-    assert.throws(
-      () => bank.create(fixture('TEST-ROLLBACK'), 'Test', null, true),
+    await assert.rejects(
+      async () => await bank.create(fixture('TEST-ROLLBACK'), 'Test', null, true),
       /forced test failure/,
     );
-    assert.equal(bank.list().total, 0);
-    assert.equal(bank.all('SELECT * FROM question_versions').length, 0);
-    assert.equal(bank.all('SELECT * FROM question_search').length, 0);
+    assert.equal((await bank.list()).total, 0);
+    assert.equal((await bank.all('SELECT * FROM question_versions')).length, 0);
+    assert.equal((await bank.all('SELECT * FROM question_search')).length, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 test('PDF ingestion is a service boundary that always stages review candidates', async () => {
-  const { bank, fixture } = setup();
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-PDF');
     doc.question.status = 'draft';
-    const { id } = bank.create(doc, 'Initial');
+    const { id } = await bank.create(doc, 'Initial');
     await assert.rejects(
       new PdfRevisionImportService(bank).prepare(id, '/uploads/test.pdf', 'Test', 'Author', 1),
       /not configured/,
@@ -359,30 +376,30 @@ test('PDF ingestion is a service boundary that always stages review candidates',
     });
     const result = await service.prepare(id, '/uploads/test.pdf', 'PDF change', 'Author', 1);
     assert.ok(result.pending);
-    assert.deepEqual(bank.document(id), doc);
+    assert.deepEqual(await bank.document(id), doc);
     assert.ok(result.diff.some((d) => d.path === 'parts'));
-    assert.equal(bank.candidates(id)[0].source, 'pdf');
+    assert.equal((await bank.candidates(id))[0].source, 'pdf');
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
-test('Migration is repeatable and stored records survive reopening', () => {
+test('Migration is repeatable and stored records survive reopening', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'physics-bank-test-'));
   try {
     const path = join(dir, 'bank.sqlite');
-    const first = new Bank(path);
-    first.close();
-    const second = new Bank(path);
-    assert.equal(second.all('SELECT * FROM schema_migrations').length, 2);
-    assert.equal(second.taxonomy().semesters.length, 2);
-    assert.equal(second.one('PRAGMA integrity_check')?.integrity_check, 'ok');
-    second.close();
+    const first = await createTestBank(path);
+    await first.close();
+    const second = await createTestBank(path);
+    assert.equal((await second.all('SELECT * FROM schema_migrations')).length, 2);
+    assert.equal((await second.taxonomy()).semesters.length, 2);
+    assert.equal((await second.one('PRAGMA integrity_check'))?.integrity_check, 'ok');
+    await second.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
-test('Diff includes content, numerical metadata, assets and hints without rewriting values', () => {
-  const { bank, fixture } = setup();
+test('Diff includes content, numerical metadata, assets and hints without rewriting values', async () => {
+  const { bank, fixture } = await setup();
   try {
     const a = fixture('TEST-DIFF'),
       b = structuredClone(a);
@@ -395,6 +412,6 @@ test('Diff includes content, numerical metadata, assets and hints without rewrit
     );
     assert.equal(a.question.totalMarks, 2);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });

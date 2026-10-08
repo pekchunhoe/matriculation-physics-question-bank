@@ -1,17 +1,19 @@
 # Matriculation Physics Question Bank
 
-A local teacher workspace with a relational SQLite database, server-side search and filters, structured authoring, and reviewed revisions. No authored Physics questions or invented official curriculum are seeded.
+A teacher workspace with relational Turso/libSQL persistence, server-side search and filters, structured authoring, and reviewed revisions. No authored Physics questions or invented official curriculum are seeded. SQLite remains available for isolated tests and recovery tooling.
 
 ## Run
 
 Requires Node.js 24 or newer.
+
+Set server-side `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [Turso/Vercel setup](docs/TURSO_RUNTIME.md) for safe credential commands and environment configuration. The database must already have migrations 001 and 002; request startup verifies the schema and never runs migrations automatically.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:3000**. The first start applies migrations and seeds Matriculation Physics, Semester 1, Semester 2, and Easy / Medium / Hard. Chapters and topics await your authoritative curriculum.
+Open **http://127.0.0.1:3000**. The migrated cloud database contains Matriculation Physics, Semester 1, Semester 2, Easy / Medium / Hard, and its reconstructed LEGACY curriculum version. Chapters and topics await your authoritative curriculum.
 
 For the production build:
 
@@ -33,9 +35,9 @@ The server binds to loopback. This is a trusted local teacher application: Stude
 
 ## Data and backup
 
-SQLite lives in `data/bank.sqlite`, and uploaded files in `data/uploads/`. These directories are excluded from Git. `BANK_DATA_DIR` changes the data directory; `PORT` changes the local port. These environment values are optional; there are no credentials to configure.
+Runtime relational data lives in Turso. The original `data/bank.sqlite` and checkpointed backups are retained as recovery evidence and are no longer opened by runtime entry points. Local uploaded files remain in `data/uploads/`. These directories are excluded from Git. `BANK_DATA_DIR` changes local upload storage only; `PORT` changes the loopback port. Turso server credentials are required.
 
-Stop the application before copying the entire `data/` directory for a consistent backup. Keep uploaded files with the database because historical snapshots reference them. JSON export preserves the structured question, solutions, hints, asset links, tags and stable code; files themselves are not embedded in JSON. Individual exports are not a full-database backup.
+Keep a Turso backup/export and a separate backup of local uploads because historical snapshots reference their files. The retained SQLite snapshot is the original recovery source, not a current cloud backup. JSON export preserves the structured question, solutions, hints, asset links, tags and stable code; files themselves are not embedded in JSON. Individual exports are not a full-database backup.
 
 Question codes are immutable after creation. Retire questions through a reviewed status change rather than deleting them. Removing an asset link preserves its uploaded file for historical versions. Uploaded files have unique names and cannot overwrite previous files.
 
@@ -51,6 +53,7 @@ npm run lint
 npm test
 npm run db:check
 npm run schema:check
+npm run api:check
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -69,6 +72,6 @@ Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank 
 
 See [architecture](docs/architecture.md) for the schema and revision design.
 
-The supplied Vercel frontend returned HTTP 200 during the audit; taxonomy/question APIs returned HTTP 404. This checkout has no hosted backend/authentication/storage configuration. See [production findings and the pilot](docs/production-and-pilot.md). No deployment or real-data migration occurred. Back up data before the first updated start, which applies migration 002.
+The earlier Vercel audit found frontend HTTP 200 and API HTTP 404. This checkout now includes a same-deployment Express function, API routing and `/api/health`; no deployment was performed. Hosted mutation routes are disabled until teacher authentication exists, and hosted uploads report unavailable durable storage. See [Turso runtime setup](docs/TURSO_RUNTIME.md) and [the runtime migration report](TURSO_RUNTIME_MIGRATION_REPORT.md). The original production findings remain historical evidence.
 
 See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.

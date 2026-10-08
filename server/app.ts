@@ -9,9 +9,13 @@ import { warnings } from '../shared/schema.js';
 import { editableKinds } from './curriculum.js';
 import { classificationSchema, type EditableKind } from '../shared/curriculum.js';
 
-export function createApp(bank: Bank, uploadDir: string) {
+export function createApp(
+  bank: Bank,
+  uploadDir: string | undefined,
+  options: { allowWrites?: boolean } = {},
+) {
   const app = express();
-  mkdirSync(uploadDir, { recursive: true });
+  if (uploadDir) mkdirSync(uploadDir, { recursive: true });
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -28,20 +32,47 @@ export function createApp(bank: Bank, uploadDir: string) {
     next();
   });
   app.use(express.json({ limit: '5mb' }));
-  app.use(
-    '/uploads',
-    express.static(uploadDir, {
-      setHeaders(res) {
-        res.setHeader(
-          'Content-Security-Policy',
-          "sandbox; default-src 'none'; style-src 'unsafe-inline'",
-        );
-      },
-    }),
-  );
-  const checkAssets = (doc: ReturnType<Bank['validate']>) => {
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await bank.one('SELECT 1 AS connected');
+      res.json({ status: 'ok', database: 'connected' });
+    } catch {
+      res.status(503).json({ status: 'error', database: 'unavailable' });
+    }
+  });
+  app.use('/api/uploads', (_req, res, next) => {
+    if (!uploadDir)
+      return res.status(503).json({ error: 'Durable upload storage is not configured' });
+    next();
+  });
+  app.use('/api', (req, res, next) => {
+    const allowWrites = options.allowWrites ?? bank.db.kind === 'sqlite';
+    if (!allowWrites && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))
+      return res
+        .status(403)
+        .json({ error: 'Hosted writes are disabled until teacher authentication is configured' });
+    next();
+  });
+  if (uploadDir)
+    app.use(
+      '/uploads',
+      express.static(uploadDir, {
+        setHeaders(res) {
+          res.setHeader(
+            'Content-Security-Policy',
+            "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+          );
+        },
+      }),
+    );
+  if (!uploadDir)
+    app.use('/uploads', (_req, res) =>
+      res.status(503).json({ error: 'Durable upload storage is not configured' }),
+    );
+  const checkAssets = (doc: Awaited<ReturnType<Bank['validate']>>) => {
     for (const a of doc.assets)
       if (a.url.startsWith('/uploads/')) {
+        if (!uploadDir) throw new BankError('Durable upload storage is not configured', 503);
         if (!existsSync(join(uploadDir, a.url.slice('/uploads/'.length))))
           throw new BankError(`Uploaded asset not found: ${a.alt}`);
         const ext = a.url.split('.').at(-1),
@@ -56,17 +87,19 @@ export function createApp(bank: Bank, uploadDir: string) {
           throw new BankError(`Asset MIME type does not match uploaded file: ${a.alt}`);
       }
   };
-  app.get('/api/taxonomy', (_req, res) => res.json(bank.taxonomy()));
+  app.get('/api/taxonomy', async (_req, res) => res.json(await bank.taxonomy()));
   const editable = (kind: string): EditableKind => {
     if (!editableKinds.includes(kind as EditableKind))
       throw new BankError('This taxonomy type is not editable');
     return kind as EditableKind;
   };
-  app.get('/api/taxonomy/:kind/:id/impact', (req, res) =>
-    res.json(bank.curriculum.impact(editable(req.params.kind), String(req.params.id))),
+  app.get('/api/taxonomy/:kind/:id/impact', async (req, res) =>
+    res.json(await bank.curriculum.impact(editable(req.params.kind), String(req.params.id))),
   );
-  app.patch('/api/taxonomy/:kind/:id', (req, res) =>
-    res.json(bank.curriculum.edit(editable(req.params.kind), String(req.params.id), req.body)),
+  app.patch('/api/taxonomy/:kind/:id', async (req, res) =>
+    res.json(
+      await bank.curriculum.edit(editable(req.params.kind), String(req.params.id), req.body),
+    ),
   );
   app.delete('/api/taxonomy/:kind/:id', (req) => {
     editable(req.params.kind);
@@ -75,39 +108,45 @@ export function createApp(bank: Bank, uploadDir: string) {
       409,
     );
   });
-  app.get('/api/curriculum-versions', (_req, res) => res.json(bank.curriculum.versions()));
-  app.post('/api/curriculum-versions', (req, res) =>
+  app.get('/api/curriculum-versions', async (_req, res) =>
+    res.json(await bank.curriculum.versions()),
+  );
+  app.post('/api/curriculum-versions', async (req, res) =>
     res
       .status(201)
       .json(
-        bank.curriculum.createVersion(req.body.version, req.body.note, req.body.author ?? null),
+        await bank.curriculum.createVersion(
+          req.body.version,
+          req.body.note,
+          req.body.author ?? null,
+        ),
       ),
   );
-  app.get('/api/curriculum-versions/:id/impact', (req, res) =>
-    res.json(bank.curriculum.impact('curriculumVersions', String(req.params.id))),
+  app.get('/api/curriculum-versions/:id/impact', async (req, res) =>
+    res.json(await bank.curriculum.impact('curriculumVersions', String(req.params.id))),
   );
-  app.patch('/api/curriculum-versions/:id', (req, res) =>
-    res.json(bank.curriculum.editVersion(String(req.params.id), req.body)),
+  app.patch('/api/curriculum-versions/:id', async (req, res) =>
+    res.json(await bank.curriculum.editVersion(String(req.params.id), req.body)),
   );
   app.delete('/api/curriculum-versions/:id', () => {
     throw new BankError('Retire curriculum versions instead of deleting their history.', 409);
   });
-  app.get('/api/curriculum-versions/:id/export', (req, res) => {
-    const doc = bank.curriculum.export(String(req.params.id));
+  app.get('/api/curriculum-versions/:id/export', async (req, res) => {
+    const doc = await bank.curriculum.export(String(req.params.id));
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="curriculum-${doc.curriculumVersion.code}.json"`,
     );
     res.json(doc);
   });
-  app.post('/api/curriculum/import/validate', (req, res) =>
-    res.json(bank.curriculum.plan(req.body.document)),
+  app.post('/api/curriculum/import/validate', async (req, res) =>
+    res.json(await bank.curriculum.plan(req.body.document)),
   );
-  app.post('/api/curriculum/import', (req, res) =>
+  app.post('/api/curriculum/import', async (req, res) =>
     res
       .status(201)
       .json(
-        bank.curriculum.import(
+        await bank.curriculum.import(
           req.body.document,
           req.body.token,
           req.body.note,
@@ -115,7 +154,7 @@ export function createApp(bank: Bank, uploadDir: string) {
         ),
       ),
   );
-  app.post('/api/taxonomy/:kind', (req, res) => {
+  app.post('/api/taxonomy/:kind', async (req, res) => {
     const kind = req.params.kind as keyof typeof taxonomyTables;
     if (!Object.hasOwn(taxonomyTables, kind)) throw new BankError('Unknown taxonomy type');
     if (
@@ -124,7 +163,7 @@ export function createApp(bank: Bank, uploadDir: string) {
     )
       throw new BankError('Name and parentId are required');
     res.status(201).json({
-      id: bank.addTaxon(
+      id: await bank.addTaxon(
         kind,
         req.body.name,
         req.body.parentId,
@@ -133,30 +172,34 @@ export function createApp(bank: Bank, uploadDir: string) {
       ),
     });
   });
-  app.get('/api/counts', (req, res) =>
-    res.json(bank.counts(typeof req.query.course === 'string' ? req.query.course : undefined)),
+  app.get('/api/counts', async (req, res) =>
+    res.json(
+      await bank.counts(typeof req.query.course === 'string' ? req.query.course : undefined),
+    ),
   );
-  app.get('/api/questions', (req, res) => {
+  app.get('/api/questions', async (req, res) => {
     const filters: Filters = {};
     for (const [key, value] of Object.entries(req.query)) {
       if (typeof value !== 'string') throw new BankError('Query parameters must be single strings');
       filters[key] = value;
     }
-    res.json(bank.list(filters));
+    res.json(await bank.list(filters));
   });
-  app.post('/api/questions', (req, res) => {
-    const doc = bank.validate(req.body.document);
+  app.post('/api/questions', async (req, res) => {
+    const doc = await bank.validate(req.body.document);
     checkAssets(doc);
     res
       .status(201)
-      .json(bank.create(doc, req.body.note, req.body.author, req.body.confirmApproval === true));
+      .json(
+        await bank.create(doc, req.body.note, req.body.author, req.body.confirmApproval === true),
+      );
   });
-  app.post('/api/import/validate', (req, res) => {
-    const doc = bank.resolveImport(req.body.document);
+  app.post('/api/import/validate', async (req, res) => {
+    const doc = await bank.resolveImport(req.body.document);
     checkAssets(doc);
     res.json({
       document: doc,
-      classification: bank.curriculum.classification(doc),
+      classification: await bank.curriculum.classification(doc),
       savedClassification:
         req.body.document?.schemaVersion === 2
           ? classificationSchema.parse(req.body.document.savedClassification)
@@ -164,11 +207,11 @@ export function createApp(bank: Bank, uploadDir: string) {
       warnings: warnings(doc),
     });
   });
-  app.post('/api/import', (req, res) => {
-    const doc = bank.resolveImport(req.body.document);
+  app.post('/api/import', async (req, res) => {
+    const doc = await bank.resolveImport(req.body.document);
     checkAssets(doc);
     const result = req.body.questionId
-      ? bank.save(
+      ? await bank.save(
           req.body.questionId,
           doc,
           req.body.note,
@@ -176,7 +219,7 @@ export function createApp(bank: Bank, uploadDir: string) {
           req.body.author,
           'json',
         )
-      : bank.create(
+      : await bank.create(
           doc,
           req.body.note,
           req.body.author,
@@ -187,16 +230,16 @@ export function createApp(bank: Bank, uploadDir: string) {
         );
     res.status(201).json(result);
   });
-  app.get('/api/questions/:id', (req, res) => {
+  app.get('/api/questions/:id', async (req, res) => {
     const id = String(req.params.id),
       version = req.query.version ? Number(req.query.version) : undefined;
     if (version !== undefined && (!Number.isInteger(version) || version < 1))
       throw new BankError('Invalid version');
-    const doc = bank.document(id, version),
+    const doc = await bank.document(id, version),
       student = req.query.view === 'student';
     res.json({
       id,
-      version: version ?? bank.current(id).active_version,
+      version: version ?? (await bank.current(id)).active_version,
       document: student
         ? {
             ...doc,
@@ -207,23 +250,29 @@ export function createApp(bank: Bank, uploadDir: string) {
           }
         : doc,
       warnings: student ? [] : warnings(doc),
-      metadata: student ? undefined : bank.current(id),
-      savedClassification: student ? undefined : bank.savedClassification(id, version),
+      metadata: student ? undefined : await bank.current(id),
+      savedClassification: student ? undefined : await bank.savedClassification(id, version),
     });
   });
-  app.put('/api/questions/:id', (req, res) => {
-    const doc = bank.validate(req.body.document);
+  app.put('/api/questions/:id', async (req, res) => {
+    const doc = await bank.validate(req.body.document);
     checkAssets(doc);
     res.json(
-      bank.save(String(req.params.id), doc, req.body.note, req.body.baseVersion, req.body.author),
+      await bank.save(
+        String(req.params.id),
+        doc,
+        req.body.note,
+        req.body.baseVersion,
+        req.body.author,
+      ),
     );
   });
-  app.get('/api/questions/:id/export', (req, res) => {
+  app.get('/api/questions/:id/export', async (req, res) => {
     const version = req.query.version === undefined ? undefined : Number(req.query.version);
     if (version !== undefined && (!Number.isInteger(version) || version < 1))
       throw new BankError('Invalid version');
     const id = String(req.params.id),
-      doc = bank.document(id, version);
+      doc = await bank.document(id, version);
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${doc.question.questionCode}.json"`,
@@ -233,26 +282,28 @@ export function createApp(bank: Bank, uploadDir: string) {
         ? {
             schemaVersion: 2,
             document: doc,
-            savedClassification: bank.savedClassification(id, version),
+            savedClassification: await bank.savedClassification(id, version),
           }
         : doc,
     );
   });
-  app.get('/api/questions/:id/versions', (req, res) =>
-    res.json(bank.versions(String(req.params.id))),
+  app.get('/api/questions/:id/versions', async (req, res) =>
+    res.json(await bank.versions(String(req.params.id))),
   );
-  app.get('/api/questions/:id/revisions', (req, res) => {
+  app.get('/api/questions/:id/revisions', async (req, res) => {
     const id = String(req.params.id);
+    const document = await bank.document(id);
     res.json(
-      bank
-        .candidates(id)
-        .map((c) => ({ ...c, diff: compareDocuments(bank.document(id), c.document) })),
+      (await bank.candidates(id)).map((c) => ({
+        ...c,
+        diff: compareDocuments(document, c.document),
+      })),
     );
   });
-  app.post('/api/revisions/:id/review', (req, res) => {
+  app.post('/api/revisions/:id/review', async (req, res) => {
     if (typeof req.body.approve !== 'boolean')
       throw new BankError('An explicit review decision is required');
-    res.json(bank.review(String(req.params.id), req.body.approve, req.body.reviewer));
+    res.json(await bank.review(String(req.params.id), req.body.approve, req.body.reviewer));
   });
   app.post('/api/questions/:id/pdf-revision', async (req, res) =>
     res.json(
@@ -270,6 +321,7 @@ export function createApp(bank: Bank, uploadDir: string) {
     limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   });
   app.post('/api/uploads', upload.single('file'), (req, res) => {
+    if (!uploadDir) throw new BankError('Durable upload storage is not configured', 503);
     const file = req.file;
     if (!file) throw new BankError('Choose a file');
     const b = file.buffer;
@@ -319,13 +371,25 @@ export function createApp(bank: Bank, uploadDir: string) {
           ? error.status
           : error instanceof multer.MulterError
             ? 400
-            : 'status' in error && typeof error.status === 'number'
-              ? error.status
-              : 500;
-      if (status === 500) console.error(error);
+            : 'type' in error && error.type === 'entity.parse.failed'
+              ? 400
+              : 'type' in error && error.type === 'entity.too.large'
+                ? 413
+                : 500;
+      // Transport errors can embed credentials or URLs; never log raw errors.
+      if (status >= 500) console.error('Question Bank request failed');
       res
         .status(status)
-        .json({ error: status === 500 ? 'Unexpected server error' : error.message });
+        .json({
+          error:
+            error instanceof BankError || error instanceof multer.MulterError
+              ? error.message
+              : status === 400
+                ? 'Invalid JSON request'
+                : status === 413
+                  ? 'Request too large'
+                  : 'Unexpected server error',
+        });
     },
   );
   return app;

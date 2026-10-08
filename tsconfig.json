@@ -17,6 +17,7 @@
     "shared",
     "tests",
     "scripts",
+    "api",
     "vite.config.ts",
     "playwright.config.ts"
   ]

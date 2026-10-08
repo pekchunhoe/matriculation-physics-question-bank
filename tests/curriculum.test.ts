@@ -1,3 +1,4 @@
+import { createTestBank } from './test-bank.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,9 +10,15 @@ import { createApp } from '../server/app.js';
 import { setup } from './fixtures.js';
 import type { CurriculumDocument, EditableKind } from '../shared/curriculum.js';
 
-function edit(bank: Bank, kind: EditableKind, id: string, change: object, confirmImpact = true) {
-  const impact = bank.curriculum.impact(kind, id);
-  return bank.curriculum.edit(kind, id, {
+async function edit(
+  bank: Bank,
+  kind: EditableKind,
+  id: string,
+  change: object,
+  confirmImpact = true,
+) {
+  const impact = await bank.curriculum.impact(kind, id);
+  return await bank.curriculum.edit(kind, id, {
     ...change,
     expectedRevision: impact.revision,
     impactToken: impact.token,
@@ -19,15 +26,15 @@ function edit(bank: Bank, kind: EditableKind, id: string, change: object, confir
     note: 'TEST DATA curriculum change',
   });
 }
-function changeVersion(
+async function changeVersion(
   bank: Bank,
   id: string,
   status: 'draft' | 'active' | 'retired',
   confirmImpact = true,
 ) {
-  const v = bank.curriculum.versions().find((v) => v.id === id)!,
-    impact = bank.curriculum.impact('curriculumVersions', id);
-  return bank.curriculum.editVersion(id, {
+  const v = (await bank.curriculum.versions()).find((v) => v.id === id)!,
+    impact = await bank.curriculum.impact('curriculumVersions', id);
+  return await bank.curriculum.editVersion(id, {
     name: v.name,
     effectiveFrom: v.effectiveFrom,
     effectiveTo: v.effectiveTo,
@@ -82,134 +89,159 @@ function document(code = 'TEST-CURRICULUM'): CurriculumDocument {
 }
 
 for (const kind of ['semesters', 'chapters', 'topics', 'subtopics'] as const)
-  test(`Rename ${kind} preserves linked content, IDs, slugs and historical names`, () => {
-    const env = setup(),
+  test(`Rename ${kind} preserves linked content, IDs, slugs and historical names`, async () => {
+    const env = await setup(),
       { bank, fixture } = env;
     try {
       const doc = fixture(`TEST-RENAME-${kind.toUpperCase()}`),
-        q = bank.create(doc, 'TEST DATA', null, true);
+        q = await bank.create(doc, 'TEST DATA', null, true);
       const id = {
         semesters: 'semester-1',
         chapters: env.c1,
         topics: env.momentum,
         subtopics: env.subtopic,
       }[kind];
-      const before = bank.taxonomy()[kind].find((t) => t.id === id)!;
-      const saved = bank.savedClassification(q.id);
-      assert.throws(() => edit(bank, kind, id, { name: 'TEST DATA renamed' }, false), /Confirm/);
-      edit(bank, kind, id, { name: 'TEST DATA renamed' });
-      assert.equal(bank.taxonomy()[kind].find((t) => t.id === id)?.slug, before.slug);
-      assert.deepEqual(bank.document(q.id), doc);
-      assert.deepEqual(bank.savedClassification(q.id), saved);
-      assert.equal(bank.list({ q: 'renamed' }).total, 1);
-      assert.equal(bank.versions(q.id).length, 1);
-      assert.equal(bank.all('SELECT * FROM curriculum_events').length, 1);
+      const before = (await bank.taxonomy())[kind].find((t) => t.id === id)!;
+      const saved = await bank.savedClassification(q.id);
+      await assert.rejects(
+        async () => await edit(bank, kind, id, { name: 'TEST DATA renamed' }, false),
+        /Confirm/,
+      );
+      await edit(bank, kind, id, { name: 'TEST DATA renamed' });
+      assert.equal((await bank.taxonomy())[kind].find((t) => t.id === id)?.slug, before.slug);
+      assert.deepEqual(await bank.document(q.id), doc);
+      assert.deepEqual(await bank.savedClassification(q.id), saved);
+      assert.equal((await bank.list({ q: 'renamed' })).total, 1);
+      assert.equal((await bank.versions(q.id)).length, 1);
+      assert.equal((await bank.all('SELECT * FROM curriculum_events')).length, 1);
     } finally {
-      bank.close();
+      await bank.close();
     }
   });
 
-test('Explicit ordering, topic retirement, guarded deletion and restoration preserve questions', () => {
-  const { bank, fixture, momentum, dynamics } = setup();
+test('Explicit ordering, topic retirement, guarded deletion and restoration preserve questions', async () => {
+  const { bank, fixture, momentum, dynamics } = await setup();
   try {
-    const q = bank.create(fixture('TEST-RETIRE'), 'TEST DATA', null, true);
-    edit(bank, 'topics', momentum, { order: 0 });
-    edit(bank, 'topics', dynamics, { order: 1 });
+    const q = await bank.create(fixture('TEST-RETIRE'), 'TEST DATA', null, true);
+    await edit(bank, 'topics', momentum, { order: 0 });
+    await edit(bank, 'topics', dynamics, { order: 1 });
     assert.equal(
-      bank
-        .taxonomy()
-        .topics.filter(
-          (t) => t.parentId === bank.taxonomy().topics.find((t) => t.id === momentum)?.parentId,
-        )[0].id,
+      (await bank.taxonomy()).topics.filter(
+        async (t) =>
+          t.parentId === (await bank.taxonomy()).topics.find((t) => t.id === momentum)?.parentId,
+      )[0].id,
       momentum,
     );
-    edit(bank, 'topics', momentum, { status: 'retired' });
-    assert.equal(bank.list({ taxonomyStatus: 'active' }).total, 0);
-    assert.equal(bank.list({ taxonomyStatus: 'all' }).total, 1);
-    assert.deepEqual(bank.document(q.id), fixture('TEST-RETIRE'));
-    assert.throws(() => bank.run('DELETE FROM topics WHERE id=?', momentum), /Retire/);
-    assert.throws(
-      () => bank.create(fixture('TEST-NEW-RETIRED'), 'TEST DATA', null, true),
+    await edit(bank, 'topics', momentum, { status: 'retired' });
+    assert.equal((await bank.list({ taxonomyStatus: 'active' })).total, 0);
+    assert.equal((await bank.list({ taxonomyStatus: 'all' })).total, 1);
+    assert.deepEqual(await bank.document(q.id), fixture('TEST-RETIRE'));
+    await assert.rejects(
+      async () => await bank.run('DELETE FROM topics WHERE id=?', momentum),
+      /Retire/,
+    );
+    await assert.rejects(
+      async () => await bank.create(fixture('TEST-NEW-RETIRED'), 'TEST DATA', null, true),
       /retired/,
     );
-    const revised = bank.document(q.id);
+    const revised = await bank.document(q.id);
     revised.question.title += ' TEST DATA wording change';
-    const candidate = bank.save(q.id, revised, 'TEST DATA retained classification', 1);
+    const candidate = await bank.save(q.id, revised, 'TEST DATA retained classification', 1);
     assert.ok(candidate.pending);
-    bank.review(candidate.candidateId!, true, 'TEST DATA Teacher');
-    assert.equal(bank.document(q.id).question.topicId, momentum);
-    edit(bank, 'topics', momentum, { status: 'active' });
-    assert.equal(bank.list({ taxonomyStatus: 'active' }).total, 1);
+    await bank.review(candidate.candidateId!, true, 'TEST DATA Teacher');
+    assert.equal((await bank.document(q.id)).question.topicId, momentum);
+    await edit(bank, 'topics', momentum, { status: 'active' });
+    assert.equal((await bank.list({ taxonomyStatus: 'active' })).total, 1);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Safe moves work for unreferenced chapters/topics/subtopics; referenced and cross-version moves fail', () => {
-  const { bank, fixture, c1, c2, momentum, dynamics } = setup();
+test('Safe moves work for unreferenced chapters/topics/subtopics; referenced and cross-version moves fail', async () => {
+  const { bank, fixture, c1, c2, momentum, dynamics } = await setup();
   try {
-    const fresh = bank.addTaxon('topics', 'TEST DATA movable', c1, true),
-      st = bank.addTaxon('subtopics', 'TEST DATA movable subtopic', fresh, true);
-    edit(bank, 'topics', fresh, { parentId: c2 });
-    assert.equal(bank.taxonomy().topics.find((t) => t.id === fresh)?.parentId, c2);
-    edit(bank, 'subtopics', st, { parentId: dynamics });
-    assert.equal(bank.taxonomy().subtopics.find((t) => t.id === st)?.parentId, dynamics);
-    const emptyChapter = bank.addTaxon('chapters', 'TEST DATA movable chapter', 'semester-1', true);
-    edit(bank, 'chapters', emptyChapter, { parentId: 'semester-2' });
+    const fresh = await bank.addTaxon('topics', 'TEST DATA movable', c1, true),
+      st = await bank.addTaxon('subtopics', 'TEST DATA movable subtopic', fresh, true);
+    await edit(bank, 'topics', fresh, { parentId: c2 });
+    assert.equal((await bank.taxonomy()).topics.find((t) => t.id === fresh)?.parentId, c2);
+    await edit(bank, 'subtopics', st, { parentId: dynamics });
+    assert.equal((await bank.taxonomy()).subtopics.find((t) => t.id === st)?.parentId, dynamics);
+    const emptyChapter = await bank.addTaxon(
+      'chapters',
+      'TEST DATA movable chapter',
+      'semester-1',
+      true,
+    );
+    await edit(bank, 'chapters', emptyChapter, { parentId: 'semester-2' });
     assert.equal(
-      bank.taxonomy().chapters.find((t) => t.id === emptyChapter)?.parentId,
+      (await bank.taxonomy()).chapters.find((t) => t.id === emptyChapter)?.parentId,
       'semester-2',
     );
-    const q = bank.create(fixture('TEST-GUARD'), 'TEST DATA', null, true);
-    assert.throws(() => edit(bank, 'topics', momentum, { parentId: c2 }), /referenced/);
-    assert.throws(
-      () => bank.run('UPDATE topics SET chapter_id=? WHERE id=?', c2, momentum),
+    const q = await bank.create(fixture('TEST-GUARD'), 'TEST DATA', null, true);
+    await assert.rejects(
+      async () => await edit(bank, 'topics', momentum, { parentId: c2 }),
+      /referenced/,
+    );
+    await assert.rejects(
+      async () => await bank.run('UPDATE topics SET chapter_id=? WHERE id=?', c2, momentum),
       /Referenced/,
     );
-    assert.throws(() => edit(bank, 'chapters', c1, { parentId: 'semester-2' }), /referenced/);
-    const plan = bank.curriculum.plan(document());
-    const result = bank.curriculum.import(plan.document, plan.token, 'TEST DATA');
-    const other = bank.curriculum.export(result.id).semesters[0].chapters[0].id!;
-    assert.throws(() => edit(bank, 'topics', fresh, { parentId: other }), /within one/);
-    assert.throws(
-      () => bank.run('UPDATE topics SET chapter_id=? WHERE id=?', other, fresh),
+    await assert.rejects(
+      async () => await edit(bank, 'chapters', c1, { parentId: 'semester-2' }),
+      /referenced/,
+    );
+    const plan = await bank.curriculum.plan(document());
+    const result = await bank.curriculum.import(plan.document, plan.token, 'TEST DATA');
+    const other = (await bank.curriculum.export(result.id)).semesters[0].chapters[0].id!;
+    await assert.rejects(
+      async () => await edit(bank, 'topics', fresh, { parentId: other }),
+      /within one/,
+    );
+    await assert.rejects(
+      async () => await bank.run('UPDATE topics SET chapter_id=? WHERE id=?', other, fresh),
       /cross-version/,
     );
-    assert.equal(bank.document(q.id).question.topicId, momentum);
+    assert.equal((await bank.document(q.id)).question.topicId, momentum);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Pending revisions and references held only in older snapshots also prevent moves', () => {
-  const { bank, fixture, c1, c2, momentum, dynamics } = setup();
+test('Pending revisions and references held only in older snapshots also prevent moves', async () => {
+  const { bank, fixture, c1, c2, momentum, dynamics } = await setup();
   try {
-    const q = bank.create(fixture('TEST-OLD-PATH'), 'TEST DATA', null, true);
+    const q = await bank.create(fixture('TEST-OLD-PATH'), 'TEST DATA', null, true);
     const revised = fixture('TEST-OLD-PATH', dynamics),
-      candidate = bank.save(q.id, revised, 'TEST DATA move question', 1);
-    bank.review(candidate.candidateId!, true, 'TEST DATA Teacher');
-    const impact = bank.curriculum.impact('topics', momentum);
+      candidate = await bank.save(q.id, revised, 'TEST DATA move question', 1);
+    await bank.review(candidate.candidateId!, true, 'TEST DATA Teacher');
+    const impact = await bank.curriculum.impact('topics', momentum);
     assert.equal(impact.currentQuestions, 0);
     assert.equal(impact.historicalQuestions, 1);
-    assert.throws(() => edit(bank, 'topics', momentum, { parentId: c2 }), /referenced/);
-    const fresh = bank.addTaxon('topics', 'TEST DATA pending topic', c1, true),
+    await assert.rejects(
+      async () => await edit(bank, 'topics', momentum, { parentId: c2 }),
+      /referenced/,
+    );
+    const fresh = await bank.addTaxon('topics', 'TEST DATA pending topic', c1, true),
       pending = fixture('TEST-OLD-PATH', fresh);
-    bank.save(q.id, pending, 'TEST DATA pending assignment', 2);
-    assert.equal(bank.curriculum.impact('topics', fresh).pendingRevisions, 1);
-    assert.throws(() => edit(bank, 'topics', fresh, { parentId: c2 }), /pending revisions/);
+    await bank.save(q.id, pending, 'TEST DATA pending assignment', 2);
+    assert.equal((await bank.curriculum.impact('topics', fresh)).pendingRevisions, 1);
+    await assert.rejects(
+      async () => await edit(bank, 'topics', fresh, { parentId: c2 }),
+      /pending revisions/,
+    );
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Impact tokens reject stale previews after edits or newly linked questions', () => {
-  const { bank, fixture, momentum } = setup();
+test('Impact tokens reject stale previews after edits or newly linked questions', async () => {
+  const { bank, fixture, momentum } = await setup();
   try {
-    const impact = bank.curriculum.impact('topics', momentum);
-    bank.create(fixture('TEST-CONCURRENT'), 'TEST DATA', null, true);
-    assert.throws(
-      () =>
-        bank.curriculum.edit('topics', momentum, {
+    const impact = await bank.curriculum.impact('topics', momentum);
+    await bank.create(fixture('TEST-CONCURRENT'), 'TEST DATA', null, true);
+    await assert.rejects(
+      async () =>
+        await bank.curriculum.edit('topics', momentum, {
           name: 'TEST DATA stale',
           expectedRevision: impact.revision,
           impactToken: impact.token,
@@ -218,11 +250,11 @@ test('Impact tokens reject stale previews after edits or newly linked questions'
         }),
       /Reload the impact/,
     );
-    const second = bank.curriculum.impact('topics', momentum);
-    edit(bank, 'topics', momentum, { order: 1 });
-    assert.throws(
-      () =>
-        bank.curriculum.edit('topics', momentum, {
+    const second = await bank.curriculum.impact('topics', momentum);
+    await edit(bank, 'topics', momentum, { order: 1 });
+    await assert.rejects(
+      async () =>
+        await bank.curriculum.edit('topics', momentum, {
           order: 2,
           expectedRevision: second.revision,
           impactToken: second.token,
@@ -232,16 +264,16 @@ test('Impact tokens reject stale previews after edits or newly linked questions'
       /changed/,
     );
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Draft creation, activation, retirement and cloning keep old questions queryable', () => {
-  const { bank, fixture, momentum } = setup();
+test('Draft creation, activation, retirement and cloning keep old questions queryable', async () => {
+  const { bank, fixture, momentum } = await setup();
   try {
-    const old = bank.create(fixture('TEST-LEGACY'), 'TEST DATA', null, true),
-      saved = bank.savedClassification(old.id);
-    const next = bank.curriculum.createVersion(
+    const old = await bank.create(fixture('TEST-LEGACY'), 'TEST DATA', null, true),
+      saved = await bank.savedClassification(old.id);
+    const next = await bank.curriculum.createVersion(
       {
         courseId: 'matriculation-physics',
         code: 'TEST-NEXT',
@@ -254,105 +286,117 @@ test('Draft creation, activation, retirement and cloning keep old questions quer
       },
       'TEST DATA clone',
     );
-    const exported = bank.curriculum.export(next.id);
+    const exported = await bank.curriculum.export(next.id);
     assert.notEqual(exported.semesters[0].id, 'semester-1');
     assert.notEqual(exported.semesters[0].chapters[0].topics[0].id, momentum);
-    assert.equal(bank.list({ curriculum: next.id }).total, 0);
-    assert.throws(() => changeVersion(bank, next.id, 'active', false), /Confirm that activation/);
-    changeVersion(bank, next.id, 'active');
-    assert.equal(bank.list({ curriculum: 'active' }).total, 0);
+    assert.equal((await bank.list({ curriculum: next.id })).total, 0);
+    await assert.rejects(
+      async () => await changeVersion(bank, next.id, 'active', false),
+      /Confirm that activation/,
+    );
+    await changeVersion(bank, next.id, 'active');
+    assert.equal((await bank.list({ curriculum: 'active' })).total, 0);
     assert.equal(
-      bank.list({
-        curriculum: 'legacy-matriculation-physics',
-        semester: 'semester-1',
-        topic: momentum,
-        difficulty: 'hard',
-        status: 'approved',
-      }).total,
+      (
+        await bank.list({
+          curriculum: 'legacy-matriculation-physics',
+          semester: 'semester-1',
+          topic: momentum,
+          difficulty: 'hard',
+          status: 'approved',
+        })
+      ).total,
       1,
     );
-    assert.deepEqual(bank.savedClassification(old.id), saved);
-    assert.deepEqual(bank.document(old.id), fixture('TEST-LEGACY'));
+    assert.deepEqual(await bank.savedClassification(old.id), saved);
+    assert.deepEqual(await bank.document(old.id), fixture('TEST-LEGACY'));
     const topic = exported.semesters[0].chapters[0].topics[0].id!,
       fresh = fixture('TEST-NEW-VERSION', topic);
     fresh.question.subtopicId = null;
-    bank.create(fresh, 'TEST DATA', null, true);
-    assert.equal(bank.list({ curriculum: 'active' }).total, 1);
-    changeVersion(bank, next.id, 'retired');
-    assert.equal(bank.list({ curriculum: next.id }).total, 1);
-    assert.equal(bank.list({ curriculum: 'active' }).total, 0);
-    assert.throws(
-      () => bank.run("UPDATE semesters SET curriculum_version_id=? WHERE id='semester-1'", next.id),
+    await bank.create(fresh, 'TEST DATA', null, true);
+    assert.equal((await bank.list({ curriculum: 'active' })).total, 1);
+    await changeVersion(bank, next.id, 'retired');
+    assert.equal((await bank.list({ curriculum: next.id })).total, 1);
+    assert.equal((await bank.list({ curriculum: 'active' })).total, 0);
+    await assert.rejects(
+      async () =>
+        await bank.run(
+          "UPDATE semesters SET curriculum_version_id=? WHERE id='semester-1'",
+          next.id,
+        ),
       /membership is stable/,
     );
-    assert.equal(bank.curriculum.versions().filter((v) => v.status === 'active').length, 0);
+    assert.equal((await bank.curriculum.versions()).filter((v) => v.status === 'active').length, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Curriculum import dry run is read-only and exports stable hierarchy/order/status metadata', () => {
-  const bank = new Bank();
+test('Curriculum import dry run is read-only and exports stable hierarchy/order/status metadata', async () => {
+  const bank = await createTestBank();
   try {
-    const before = bank.taxonomy(),
-      plan = bank.curriculum.plan(document());
-    assert.deepEqual(bank.taxonomy(), before);
+    const before = await bank.taxonomy(),
+      plan = await bank.curriculum.plan(document());
+    assert.deepEqual(await bank.taxonomy(), before);
     assert.deepEqual(plan.counts, { semesters: 1, chapters: 1, topics: 1, subtopics: 1 });
-    const result = bank.curriculum.import(
+    const result = await bank.curriculum.import(
       plan.document,
       plan.token,
       'TEST DATA authoritative fixture',
     );
-    const exported = bank.curriculum.export(result.id);
+    const exported = await bank.curriculum.export(result.id);
     assert.deepEqual(exported, plan.document);
     assert.equal(exported.semesters[0].chapters[0].topics[0].subtopics[0].status, 'retired');
-    assert.throws(() => bank.curriculum.plan(exported), /already exists/);
+    await assert.rejects(async () => await bank.curriculum.plan(exported), /already exists/);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Invalid curriculum imports, duplicates and stale plans do not partially write', () => {
-  const bank = new Bank();
+test('Invalid curriculum imports, duplicates and stale plans do not partially write', async () => {
+  const bank = await createTestBank();
   try {
-    const before = bank.taxonomy(),
+    const before = await bank.taxonomy(),
       invalid = document();
     invalid.semesters.push(structuredClone(invalid.semesters[0]));
-    assert.throws(() => bank.curriculum.plan(invalid), /Duplicate/);
-    assert.deepEqual(bank.taxonomy(), before);
+    await assert.rejects(async () => await bank.curriculum.plan(invalid), /Duplicate/);
+    assert.deepEqual(await bank.taxonomy(), before);
     const inconsistent = document();
     inconsistent.course.id = 'unknown';
-    assert.throws(() => bank.curriculum.plan(inconsistent), /existing course/);
+    await assert.rejects(async () => await bank.curriculum.plan(inconsistent), /existing course/);
     const badDate = document();
     badDate.curriculumVersion.effectiveFrom = '2028-01-01';
     badDate.curriculumVersion.effectiveTo = '2026-01-01';
-    assert.throws(() => bank.curriculum.plan(badDate), /dates/);
-    const plan = bank.curriculum.plan(document());
-    bank.addTaxon('chapters', 'TEST DATA concurrent taxonomy', 'semester-1', true);
-    assert.throws(() => bank.curriculum.import(plan.document, plan.token, 'TEST DATA'), /stale/);
-    assert.equal(bank.curriculum.versions().length, 1);
-    const fresh = bank.curriculum.plan(document());
-    bank.db.exec(
+    await assert.rejects(async () => await bank.curriculum.plan(badDate), /dates/);
+    const plan = await bank.curriculum.plan(document());
+    await bank.addTaxon('chapters', 'TEST DATA concurrent taxonomy', 'semester-1', true);
+    await assert.rejects(
+      async () => await bank.curriculum.import(plan.document, plan.token, 'TEST DATA'),
+      /stale/,
+    );
+    assert.equal((await bank.curriculum.versions()).length, 1);
+    const fresh = await bank.curriculum.plan(document());
+    await bank.db.exec(
       "CREATE TRIGGER test_import_failure BEFORE INSERT ON topics BEGIN SELECT RAISE(ABORT,'TEST DATA forced rollback'); END;",
     );
-    assert.throws(
-      () => bank.curriculum.import(fresh.document, fresh.token, 'TEST DATA'),
+    await assert.rejects(
+      async () => await bank.curriculum.import(fresh.document, fresh.token, 'TEST DATA'),
       /forced rollback/,
     );
-    assert.equal(bank.curriculum.versions().length, 1);
-    assert.equal(bank.taxonomy().semesters.length, 2);
-    assert.equal(bank.all('SELECT * FROM curriculum_events').length, 0);
+    assert.equal((await bank.curriculum.versions()).length, 1);
+    assert.equal((await bank.taxonomy()).semesters.length, 2);
+    assert.equal((await bank.all('SELECT * FROM curriculum_events')).length, 0);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Question classification rejects cross-parent IDs and ambiguous names across versions', () => {
-  const { bank, fixture, circular } = setup();
+test('Question classification rejects cross-parent IDs and ambiguous names across versions', async () => {
+  const { bank, fixture, circular } = await setup();
   try {
     const bad = fixture('TEST-CROSS');
     bad.question.topicId = circular;
-    assert.throws(() => bank.resolveImport(bad), /Subtopic does not belong/);
+    await assert.rejects(async () => await bank.resolveImport(bad), /Subtopic does not belong/);
     const q = fixture('TEST-CONTEXT') as unknown as Record<string, unknown>;
     q.classification = {
       course: 'matriculation-physics',
@@ -362,8 +406,8 @@ test('Question classification rejects cross-parent IDs and ambiguous names acros
       topic: 'TEST ONLY Momentum',
       subtopic: 'TEST ONLY 2D collision',
     };
-    assert.throws(() => bank.resolveImport(q), /semester/);
-    bank.curriculum.createVersion(
+    await assert.rejects(async () => await bank.resolveImport(q), /semester/);
+    await bank.curriculum.createVersion(
       {
         courseId: 'matriculation-physics',
         code: 'TEST-DUPLICATE',
@@ -378,36 +422,36 @@ test('Question classification rejects cross-parent IDs and ambiguous names acros
     );
     (q.classification as Record<string, string>).curriculumVersion = 'LEGACY';
     assert.equal(
-      bank.resolveImport(q).question.topicId,
+      (await bank.resolveImport(q)).question.topicId,
       (q.question as { topicId: string }).topicId,
     );
     delete (q.classification as Record<string, string>).curriculumVersion;
-    assert.throws(() => bank.resolveImport(q), /Ambiguous semester/);
+    await assert.rejects(async () => await bank.resolveImport(q), /Ambiguous semester/);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('All requested Physics notation validates without altering authored text', () => {
-  const { bank, fixture } = setup();
+test('All requested Physics notation validates without altering authored text', async () => {
+  const { bank, fixture } = await setup();
   try {
     const doc = fixture('TEST-MATH');
     doc.question.scenario = 'TEST DATA $W_g = mgs\\cos110^\\circ$ and $\\vec{p}=m\\vec{v}$';
     doc.parts[0].prompt =
       'TEST DATA $$\\begin{aligned}\\sum F &= ma\\\\N &= \\frac{mv^2}{r}\\end{aligned}$$ $\\alpha_1^2 = 2\\,\\mathrm{m\\,s^{-2}}$';
     doc.solutions[0].equationLatex = '\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix}';
-    const q = bank.create(doc, 'TEST DATA', null, true);
-    assert.deepEqual(bank.document(q.id), doc);
+    const q = await bank.create(doc, 'TEST DATA', null, true);
+    assert.deepEqual(await bank.document(q.id), doc);
     const bad = structuredClone(doc);
     bad.solutions[0].equationLatex = '\\notACommand';
-    assert.throws(() => bank.resolveImport(bad), /LaTeX/);
+    await assert.rejects(async () => await bank.resolveImport(bad), /LaTeX/);
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('Migration 002 upgrades populated v1 data without rewriting authored rows, versions or assets', () => {
-  const { bank: source, fixture } = setup(),
+test('Migration 002 upgrades populated v1 data without rewriting authored rows, versions or assets', async () => {
+  const { bank: source, fixture } = await setup(),
     dir = mkdtempSync(join(tmpdir(), 'physics-curriculum-upgrade-'));
   try {
     const doc = fixture('TEST-MIGRATION');
@@ -422,7 +466,7 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
         order: 2,
       },
     ];
-    const q = source.create(doc, 'TEST DATA v1 migration fixture', 'TEST DATA Teacher', true);
+    const q = await source.create(doc, 'TEST DATA v1 migration fixture', 'TEST DATA Teacher', true);
     const path = join(dir, 'upgrade.sqlite'),
       old = new DatabaseSync(path);
     old.exec('PRAGMA foreign_keys=ON');
@@ -456,7 +500,7 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
         .prepare(`PRAGMA table_info(${table})`)
         .all()
         .map((r) => String(r.name));
-      const rows = source.all(
+      const rows = await source.all(
         `SELECT ${columns.join(',')} FROM ${table} ORDER BY ${columns.join(',')}`,
       );
       for (const row of rows)
@@ -469,43 +513,45 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
     }
     old.exec('COMMIT');
     old.close();
-    const upgraded = new Bank(path);
+    const upgraded = await createTestBank(path);
     try {
       for (const [table, { columns, rows }] of originals)
         assert.deepEqual(
-          upgraded.all(`SELECT ${columns.join(',')} FROM ${table} ORDER BY ${columns.join(',')}`),
+          await upgraded.all(
+            `SELECT ${columns.join(',')} FROM ${table} ORDER BY ${columns.join(',')}`,
+          ),
           rows,
           table,
         );
-      assert.deepEqual(upgraded.document(q.id), doc);
-      assert.equal(upgraded.savedClassification(q.id)?.provenance, 'reconstructed');
-      assert.equal(upgraded.savedClassification(q.id)?.topic.name, 'TEST ONLY Momentum');
-      assert.equal(upgraded.one('PRAGMA integrity_check')?.integrity_check, 'ok');
-      assert.deepEqual(upgraded.all('PRAGMA foreign_key_check'), []);
-      edit(upgraded, 'topics', doc.question.topicId, { name: 'TEST DATA after migration' });
-      assert.equal(upgraded.savedClassification(q.id)?.topic.name, 'TEST ONLY Momentum');
-      assert.throws(
-        () =>
-          upgraded.run(
+      assert.deepEqual(await upgraded.document(q.id), doc);
+      assert.equal((await upgraded.savedClassification(q.id))?.provenance, 'reconstructed');
+      assert.equal((await upgraded.savedClassification(q.id))?.topic.name, 'TEST ONLY Momentum');
+      assert.equal((await upgraded.one('PRAGMA integrity_check'))?.integrity_check, 'ok');
+      assert.deepEqual(await upgraded.all('PRAGMA foreign_key_check'), []);
+      await edit(upgraded, 'topics', doc.question.topicId, { name: 'TEST DATA after migration' });
+      assert.equal((await upgraded.savedClassification(q.id))?.topic.name, 'TEST ONLY Momentum');
+      await assert.rejects(
+        async () =>
+          await upgraded.run(
             'UPDATE question_version_classifications SET snapshot=snapshot WHERE question_id=?',
             q.id,
           ),
         /immutable/,
       );
     } finally {
-      upgraded.close();
+      await upgraded.close();
     }
-    const reopened = new Bank(path);
-    assert.equal(reopened.all('SELECT * FROM schema_migrations').length, 2);
-    reopened.close();
+    const reopened = await createTestBank(path);
+    assert.equal((await reopened.all('SELECT * FROM schema_migrations')).length, 2);
+    await reopened.close();
   } finally {
-    source.close();
+    await source.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip provenance', async () => {
-  const { bank, fixture, momentum } = setup(),
+  const { bank, fixture, momentum } = await setup(),
     dir = mkdtempSync(join(tmpdir(), 'physics-curriculum-api-')),
     server = createApp(bank, dir).listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -518,7 +564,7 @@ test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip 
     body: JSON.stringify(value),
   });
   try {
-    const q = bank.create(fixture('TEST-HTTP-PROVENANCE'), 'TEST DATA', null, true);
+    const q = await bank.create(fixture('TEST-HTTP-PROVENANCE'), 'TEST DATA', null, true);
     assert.equal(
       (await fetch(`${base}/taxonomy/topics/${momentum}`, { method: 'DELETE' })).status,
       409,
@@ -529,7 +575,7 @@ test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip 
       exported = await response.json();
     assert.equal(exported.schemaVersion, 2);
     const live = exported.savedClassification.topic.name;
-    edit(bank, 'topics', momentum, { name: 'TEST DATA HTTP renamed' });
+    await edit(bank, 'topics', momentum, { name: 'TEST DATA HTTP renamed' });
     assert.equal(
       (await (await fetch(`${base}/import/validate`, body('POST', { document: exported }))).json())
         .document.question.questionCode,
@@ -547,7 +593,7 @@ test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip 
     );
     assert.equal(created.status, 201);
     const copied = await created.json();
-    assert.equal(bank.savedClassification(copied.id)?.topic.name, live);
+    assert.equal((await bank.savedClassification(copied.id))?.topic.name, live);
     exported.savedClassification.semester.id = 'semester-2';
     assert.equal(
       (await fetch(`${base}/import/validate`, body('POST', { document: exported }))).status,
@@ -568,28 +614,28 @@ test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip 
     assert.equal(student.document.solutions.length, 0);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    bank.close();
+    await bank.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('Retired ancestry blocks new taxonomy and question assignments; invalid version membership fails at the database', () => {
-  const { bank, fixture, c1, momentum } = setup();
+test('Retired ancestry blocks new taxonomy and question assignments; invalid version membership fails at the database', async () => {
+  const { bank, fixture, c1, momentum } = await setup();
   try {
-    edit(bank, 'semesters', 'semester-1', { status: 'retired' });
-    assert.throws(
-      () => bank.addTaxon('topics', 'TEST DATA retired ancestor', c1, true),
+    await edit(bank, 'semesters', 'semester-1', { status: 'retired' });
+    await assert.rejects(
+      async () => await bank.addTaxon('topics', 'TEST DATA retired ancestor', c1, true),
       /retired parent hierarchy/,
     );
-    assert.throws(
-      () => bank.create(fixture('TEST-RETIRED-ANCESTRY'), 'TEST DATA', null, true),
+    await assert.rejects(
+      async () => await bank.create(fixture('TEST-RETIRED-ANCESTRY'), 'TEST DATA', null, true),
       /retired/,
     );
-    edit(bank, 'semesters', 'semester-1', { status: 'active' });
-    const course = bank.addTaxon('courses', 'TEST DATA second course', null, true);
-    assert.throws(
-      () =>
-        bank.addTaxon(
+    await edit(bank, 'semesters', 'semester-1', { status: 'active' });
+    const course = await bank.addTaxon('courses', 'TEST DATA second course', null, true);
+    await assert.rejects(
+      async () =>
+        await bank.addTaxon(
           'semesters',
           'TEST DATA invalid version',
           course,
@@ -598,29 +644,29 @@ test('Retired ancestry blocks new taxonomy and question assignments; invalid ver
         ),
       /belonging to this course/,
     );
-    assert.throws(
-      () =>
-        bank.run(
+    await assert.rejects(
+      async () =>
+        await bank.run(
           "INSERT INTO semesters(id,course_id,curriculum_version_id,name,slug) VALUES('test-invalid',?,'legacy-matriculation-physics','TEST DATA invalid','test-invalid')",
           course,
         ),
       /must belong/,
     );
-    assert.throws(
-      () => edit(bank, 'topics', momentum, { parentId: 'unknown-parent' }),
+    await assert.rejects(
+      async () => await edit(bank, 'topics', momentum, { parentId: 'unknown-parent' }),
       /not found/,
     );
-    changeVersion(bank, 'legacy-matriculation-physics', 'retired');
-    assert.throws(
-      () => bank.addTaxon('topics', 'TEST DATA retired version', c1, true),
+    await changeVersion(bank, 'legacy-matriculation-physics', 'retired');
+    await assert.rejects(
+      async () => await bank.addTaxon('topics', 'TEST DATA retired version', c1, true),
       /curriculum version/,
     );
   } finally {
-    bank.close();
+    await bank.close();
   }
 });
 
-test('An unreconstructable old classification rolls migration 002 back without changing the v1 database', () => {
+test('An unreconstructable old classification rolls migration 002 back without changing the v1 database', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'physics-bad-history-'));
   try {
     const path = join(dir, 'legacy.sqlite'),
@@ -641,7 +687,10 @@ test('An unreconstructable old classification rolls migration 002 back without c
       .prepare('INSERT INTO question_versions VALUES(?,?,?,?,?,?)')
       .run('test-old-question', 1, snapshot, 'TEST DATA old missing taxonomy', null, 'TEST DATA');
     old.close();
-    assert.throws(() => new Bank(path), /cannot reconstruct every historical classification/);
+    await assert.rejects(
+      async () => await createTestBank(path),
+      /cannot reconstruct every historical classification/,
+    );
     const reopened = new DatabaseSync(path, { readOnly: true });
     try {
       assert.equal(reopened.prepare('SELECT count(*) n FROM schema_migrations').get()?.n, 1);
@@ -661,7 +710,7 @@ test('An unreconstructable old classification rolls migration 002 back without c
         false,
       );
     } finally {
-      reopened.close();
+      await reopened.close();
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

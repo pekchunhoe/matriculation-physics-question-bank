@@ -17,9 +17,11 @@
     "test:browser:server": "tsx scripts/browser-server.ts",
     "db:check": "tsx scripts/check-db.ts",
     "schema:generate": "tsx scripts/export-schema.ts",
-    "schema:check": "tsx scripts/export-schema.ts --check"
+    "schema:check": "tsx scripts/export-schema.ts --check",
+    "api:check": "tsx scripts/check-vercel-api.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "express": "^5.1.0",
     "katex": "^0.19.0",
     "multer": "^2.0.2",

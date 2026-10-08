@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createApp } from '../server/app.js';
 import { seedTests } from '../tests/fixtures.js';
-const { bank } = seedTests(),
+const { bank } = await seedTests(),
   uploads = mkdtempSync(join(tmpdir(), 'physics-bank-browser-')),
   app = createApp(bank, uploads);
 app.use(express.static(resolve('dist')));
@@ -14,8 +14,8 @@ const server = app.listen(3100, '127.0.0.1', () =>
 );
 for (const signal of ['SIGINT', 'SIGTERM'])
   process.on(signal, () =>
-    server.close(() => {
-      bank.close();
+    server.close(async () => {
+      await bank.close();
       rmSync(uploads, { recursive: true, force: true });
       process.exit(0);
     }),

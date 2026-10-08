@@ -9,13 +9,13 @@ import type { QuestionDocument } from '../shared/schema.js';
 async function withApi(
   fn: (env: {
     base: string;
-    fixture: ReturnType<typeof setup>['fixture'];
-    bank: ReturnType<typeof setup>['bank'];
+    fixture: Awaited<ReturnType<typeof setup>>['fixture'];
+    bank: Awaited<ReturnType<typeof setup>>['bank'];
     momentum: string;
   }) => Promise<void>,
   seed = false,
 ) {
-  const env = seed ? seedTests() : setup(),
+  const env = seed ? await seedTests() : await setup(),
     dir = mkdtempSync(join(tmpdir(), 'physics-bank-api-')),
     app = createApp(env.bank, dir),
     server = app.listen(0, '127.0.0.1');
@@ -26,7 +26,7 @@ async function withApi(
     await fn({ ...env, base: `http://127.0.0.1:${addr.port}` });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
-    env.bank.close();
+    await env.bank.close();
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -72,7 +72,7 @@ test('Student API excludes solutions, teacher notes, marking points and answer a
         order: 0,
       },
     ];
-    const { id } = bank.create(doc, 'Test', null, true);
+    const { id } = await bank.create(doc, 'Test', null, true);
     for (const query of ['?view=student', '?view=student&version=1']) {
       const response = await fetch(base + '/api/questions/' + id + query);
       const text = await response.text();
@@ -100,7 +100,7 @@ test('HTTP import validates first, rejects duplicates, and queues approved repla
       ...body({ document: doc }),
     });
     assert.equal(validate.status, 200);
-    assert.equal(bank.list().total, 0);
+    assert.equal((await bank.list()).total, 0);
     const created = await fetch(base + '/api/import', {
       method: 'POST',
       ...body({ document: doc, note: 'Initial', confirmApproval: true }),
@@ -125,7 +125,7 @@ test('HTTP import validates first, rejects duplicates, and queues approved repla
     });
     const pending = await revision.json();
     assert.equal(pending.pending, true);
-    assert.notEqual(bank.document(id).question.title, doc.question.title);
+    assert.notEqual((await bank.document(id)).question.title, doc.question.title);
     const malformed = await fetch(base + '/api/revisions/' + pending.candidateId + '/review', {
       method: 'POST',
       ...body({ approve: 'yes', reviewer: 'Teacher' }),
@@ -136,7 +136,7 @@ test('HTTP import validates first, rejects duplicates, and queues approved repla
       ...body({ approve: true, reviewer: 'Teacher' }),
     });
     assert.equal(approved.status, 200);
-    assert.equal(bank.document(id).question.title, doc.question.title);
+    assert.equal((await bank.document(id)).question.title, doc.question.title);
   }));
 test('Malformed JSON and invalid import structure fail clearly without partial writes', async () =>
   withApi(async ({ base, bank, fixture }) => {
@@ -154,7 +154,7 @@ test('Malformed JSON and invalid import structure fail clearly without partial w
     });
     assert.equal(invalid.status, 400);
     assert.ok((await invalid.json()).error.includes('totalMarks'));
-    assert.equal(bank.list().total, 0);
+    assert.equal((await bank.list()).total, 0);
     assert.equal((await fetch(base + '/api/no-such-route')).status, 404);
   }));
 test('Uploads validate signatures and SVG content, and imports require existing matching assets', async () =>
@@ -223,7 +223,7 @@ test('Uploads validate signatures and SVG content, and imports require existing 
       ).status,
       400,
     );
-    const saved = bank.document(id);
+    const saved = await bank.document(id);
     assert.deepEqual(saved.assets, doc.assets);
     const bad = structuredClone(doc);
     bad.question.questionCode = 'TEST-MISSING-ASSET';
@@ -247,23 +247,23 @@ test('Cross-origin writes are rejected and future PDF extraction remains explici
       body: JSON.stringify({ document: doc, note: 'Blocked', confirmApproval: true }),
     });
     assert.equal(blocked.status, 403);
-    const { id } = bank.create(doc, 'Initial', null, true);
+    const { id } = await bank.create(doc, 'Initial', null, true);
     const pdf = await fetch(base + '/api/questions/' + id + '/pdf-revision', {
       method: 'POST',
       ...body({ pdfUrl: '/uploads/test.pdf', note: 'Future', author: 'Teacher', baseVersion: 1 }),
     });
     assert.equal(pdf.status, 501);
-    assert.equal(bank.current(id).active_version, 1);
+    assert.equal((await bank.current(id)).active_version, 1);
   }));
 test('Exports roundtrip through the versioned structured import validator', async () =>
   withApi(async ({ base, fixture, bank }) => {
     const original = fixture('TEST-EXPORT');
-    const { id } = bank.create(original, 'Export', null, true);
+    const { id } = await bank.create(original, 'Export', null, true);
     const response = await fetch(base + '/api/questions/' + id + '/export');
     const doc = (await response.json()) as QuestionDocument;
     assert.deepEqual(doc, original);
     assert.ok(response.headers.get('content-disposition')?.includes('.json'));
-    assert.deepEqual(bank.resolveImport(doc), original);
+    assert.deepEqual(await bank.resolveImport(doc), original);
     const versions = await fetch(base + '/api/questions/' + id + '/versions');
     assert.equal((await versions.json()).length, 1);
   }));
