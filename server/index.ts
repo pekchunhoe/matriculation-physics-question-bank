@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { connectRuntimeBank } from './runtime.js';
 import { createApp } from './app.js';
+import { LocalAssetStorage } from './local-asset-storage.js';
 
 const data = resolve(process.env.BANK_DATA_DIR ?? 'data');
 const bank = await connectRuntimeBank().catch(() => {
@@ -11,7 +12,7 @@ const bank = await connectRuntimeBank().catch(() => {
   );
   process.exit(1);
 });
-const app = createApp(bank, resolve(data, 'uploads'), { allowWrites: true });
+const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')), { allowWrites: true });
 if (process.env.NODE_ENV === 'production' || process.argv.includes('--production')) {
   app.use(express.static(resolve('dist')));
   app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));

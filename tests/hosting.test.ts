@@ -51,7 +51,7 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
         ['POST', '/api/revisions/test/review'],
       ])
         assert.equal((await fetch(base + path, { method })).status, 403);
-      assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 503);
+      assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 403);
       assert.equal((await fetch(base + '/uploads/test.pdf')).status, 503);
       assert.equal((await fetch(base + '/api/questions')).status, 200);
       assert.equal((await fetch(base + '/api/taxonomy')).status, 200);

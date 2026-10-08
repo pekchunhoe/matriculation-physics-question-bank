@@ -2,6 +2,7 @@ import { z } from 'zod';
 import katex from 'katex';
 import { assetKinds } from './model.js';
 export { assetKinds, warnings } from './model.js';
+import { assetKeyFromReference } from './asset-reference.js';
 
 const text = z.string().max(30000);
 const id = z.string().min(1).max(120);
@@ -69,11 +70,15 @@ export const assetSchema = z
       .string()
       .max(2000)
       .refine((v) => {
-        if (/^\/uploads\/[a-zA-Z0-9.-]+$/.test(v)) return true;
+        if (v.startsWith('/uploads/')) return Boolean(assetKeyFromReference(v));
         try {
           const url = new URL(v);
           return (
-            url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password
+            url.protocol === 'https:' &&
+            Boolean(url.hostname) &&
+            !url.username &&
+            !url.password &&
+            !url.hostname.endsWith('.blob.vercel-storage.com')
           );
         } catch {
           return false;

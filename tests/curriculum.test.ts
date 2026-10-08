@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Bank } from '../server/database.js';
 import { createApp } from '../server/app.js';
+import { LocalAssetStorage } from '../server/local-asset-storage.js';
 import { setup } from './fixtures.js';
 import type { CurriculumDocument, EditableKind } from '../shared/curriculum.js';
 
@@ -553,7 +554,7 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
 test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip provenance', async () => {
   const { bank, fixture, momentum } = await setup(),
     dir = mkdtempSync(join(tmpdir(), 'physics-curriculum-api-')),
-    server = createApp(bank, dir).listen(0, '127.0.0.1');
+    server = createApp(bank, new LocalAssetStorage(dir)).listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const address = server.address();
   assert.ok(address && typeof address === 'object');

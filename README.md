@@ -55,6 +55,7 @@ npm run db:check
 npm run schema:check
 npm run api:check
 npm run api:esm:check
+npm run storage:check
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -75,6 +76,6 @@ Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank 
 
 See [architecture](docs/architecture.md) for the schema and revision design.
 
-The earlier Vercel audit found frontend HTTP 200 and API HTTP 404. This checkout now includes a same-deployment Express function, API routing and `/api/health`; no deployment was performed. Hosted mutation routes are disabled until teacher authentication exists, and hosted uploads report unavailable durable storage. See [Turso runtime setup](docs/TURSO_RUNTIME.md) and [the runtime migration report](TURSO_RUNTIME_MIGRATION_REPORT.md). The original production findings remain historical evidence.
+The earlier Vercel audit found frontend HTTP 200 and API HTTP 404. This checkout includes a same-deployment Express function, API routing and `/api/health`. Hosted mutations and uploads remain forbidden until teacher authentication exists. A Vercel Private Blob adapter now provides the durable storage foundation; hosted asset delivery remains forbidden when configured, or unavailable when configuration is absent. Local authoring keeps filesystem uploads. See [private asset storage and setup](docs/ASSET_STORAGE.md), [the storage report](VERCEL_BLOB_STORAGE_REPORT.md), [Turso runtime setup](docs/TURSO_RUNTIME.md), and [the runtime migration report](TURSO_RUNTIME_MIGRATION_REPORT.md). No deployment was performed; the original production findings remain historical evidence.
 
 See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.

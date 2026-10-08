@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/app.js';
+import { LocalAssetStorage } from '../server/local-asset-storage.js';
 import { setup, seedTests } from './fixtures.js';
 import type { QuestionDocument } from '../shared/schema.js';
 async function withApi(
@@ -17,7 +18,7 @@ async function withApi(
 ) {
   const env = seed ? await seedTests() : await setup(),
     dir = mkdtempSync(join(tmpdir(), 'physics-bank-api-')),
-    app = createApp(env.bank, dir),
+    app = createApp(env.bank, new LocalAssetStorage(dir)),
     server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const addr = server.address();

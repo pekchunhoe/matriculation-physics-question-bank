@@ -85,6 +85,29 @@ try {
     .filter((file) => !file.isDeclarationFile && !program.isSourceFileFromExternalLibrary(file));
   let sourceReferences = 0;
   for (const file of sources) {
+    assert.ok(!file.fileName.includes('local-asset-storage'), 'Local storage entered hosted graph');
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteralLike(statement.moduleSpecifier))
+        continue;
+      if (
+        !['fs', 'node:fs', 'fs/promises', 'node:fs/promises'].includes(
+          statement.moduleSpecifier.text,
+        )
+      )
+        continue;
+      const bindings = statement.importClause?.namedBindings;
+      assert.ok(
+        bindings && ts.isNamedImports(bindings),
+        'Hosted filesystem imports must be explicitly read-only',
+      );
+      for (const binding of bindings.elements)
+        assert.ok(
+          ['readFileSync', 'readdirSync', 'readFile', 'readdir'].includes(
+            (binding.propertyName ?? binding.name).text,
+          ),
+          'Filesystem persistence entered hosted graph',
+        );
+    }
     for (const ref of references(file)) {
       sourceReferences++;
       assert.ok(
@@ -147,6 +170,9 @@ console.log('Native Node ESM API import and credential-free health response: PAS
   delete env.TURSO_DATABASE_URL;
   delete env.TURSO_AUTH_TOKEN;
   delete env.NODE_OPTIONS;
+  delete env.BLOB_STORE_ID;
+  delete env.BLOB_READ_WRITE_TOKEN;
+  delete env.VERCEL_OIDC_TOKEN;
   const launch = () =>
     spawnSync(process.execPath, [runner], {
       cwd: output,

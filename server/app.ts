@@ -1,8 +1,13 @@
 import express from 'express';
 import multer from 'multer';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { AssetService } from './asset-service.js';
+import {
+  AssetStorageError,
+  AssetWriteFailure,
+  maxAssetBytes,
+  type AssetStorage,
+} from './asset-storage.js';
+import { assetKeyFromReference } from '../shared/asset-reference.js';
 import { Bank, BankError, taxonomyTables, type Filters } from './database.js';
 import { compareDocuments, PdfRevisionImportService } from './revisions.js';
 import { warnings } from '../shared/schema.js';
@@ -11,11 +16,11 @@ import { classificationSchema, type EditableKind } from '../shared/curriculum.js
 
 export function createApp(
   bank: Bank,
-  uploadDir: string | undefined,
+  storage: AssetStorage | undefined,
   options: { allowWrites?: boolean } = {},
 ) {
   const app = express();
-  if (uploadDir) mkdirSync(uploadDir, { recursive: true });
+  const assets = storage ? new AssetService(storage, bank) : undefined;
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -40,11 +45,6 @@ export function createApp(
       res.status(503).json({ status: 'error', database: 'unavailable' });
     }
   });
-  app.use('/api/uploads', (_req, res, next) => {
-    if (!uploadDir)
-      return res.status(503).json({ error: 'Durable upload storage is not configured' });
-    next();
-  });
   app.use('/api', (req, res, next) => {
     const allowWrites = options.allowWrites ?? bank.db.kind === 'sqlite';
     if (!allowWrites && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))
@@ -53,39 +53,54 @@ export function createApp(
         .json({ error: 'Hosted writes are disabled until teacher authentication is configured' });
     next();
   });
-  if (uploadDir)
-    app.use(
-      '/uploads',
-      express.static(uploadDir, {
-        setHeaders(res) {
-          res.setHeader(
-            'Content-Security-Policy',
-            "sandbox; default-src 'none'; style-src 'unsafe-inline'",
-          );
-        },
-      }),
+  app.use('/uploads', async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!storage) return res.status(503).json({ error: 'Asset storage is not configured' });
+    if (storage.kind !== 'local')
+      return res
+        .status(403)
+        .json({ error: 'Private asset delivery requires teacher authorization' });
+    if (!['GET', 'HEAD'].includes(req.method))
+      return res.status(405).json({ error: 'Asset delivery accepts read requests only' });
+    const key = assetKeyFromReference('/uploads' + req.path);
+    if (!key) throw new AssetStorageError('Invalid asset reference', 400, 'invalid_key');
+    const result = await storage.get(key);
+    if (!result) return res.status(404).json({ error: 'Asset not found' });
+    res.setHeader(
+      'Content-Security-Policy',
+      "sandbox; default-src 'none'; style-src 'unsafe-inline'",
     );
-  if (!uploadDir)
-    app.use('/uploads', (_req, res) =>
-      res.status(503).json({ error: 'Durable upload storage is not configured' }),
-    );
-  const checkAssets = (doc: Awaited<ReturnType<Bank['validate']>>) => {
-    for (const a of doc.assets)
-      if (a.url.startsWith('/uploads/')) {
-        if (!uploadDir) throw new BankError('Durable upload storage is not configured', 503);
-        if (!existsSync(join(uploadDir, a.url.slice('/uploads/'.length))))
-          throw new BankError(`Uploaded asset not found: ${a.alt}`);
-        const ext = a.url.split('.').at(-1),
-          types: Record<string, string> = {
-            svg: 'image/svg+xml',
-            png: 'image/png',
-            jpg: 'image/jpeg',
-            webp: 'image/webp',
-            pdf: 'application/pdf',
-          };
-        if (types[ext ?? ''] !== a.mime)
-          throw new BankError(`Asset MIME type does not match uploaded file: ${a.alt}`);
-      }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', `inline; filename="${key}"`);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.type(result.metadata.mime);
+    const range = req.headers.range;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range),
+        size = result.bytes.length;
+      const start = match?.[1]
+        ? Number(match[1])
+        : match?.[2]
+          ? Math.max(0, size - Number(match[2]))
+          : NaN;
+      const end = match?.[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        start >= size ||
+        end < start
+      )
+        return res.status(416).setHeader('Content-Range', `bytes */${size}`).end();
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      return res.status(206).send(result.bytes.subarray(start, end + 1));
+    }
+    res.send(result.bytes);
+  });
+  const checkAssets = async (doc: Awaited<ReturnType<Bank['validate']>>) => {
+    if (!assets && doc.assets.some((asset) => asset.url.startsWith('/uploads/')))
+      throw new AssetStorageError('Asset storage is not configured');
+    await assets?.checkDocument(doc);
   };
   app.get('/api/taxonomy', async (_req, res) => res.json(await bank.taxonomy()));
   const editable = (kind: string): EditableKind => {
@@ -187,7 +202,7 @@ export function createApp(
   });
   app.post('/api/questions', async (req, res) => {
     const doc = await bank.validate(req.body.document);
-    checkAssets(doc);
+    await checkAssets(doc);
     res
       .status(201)
       .json(
@@ -196,7 +211,7 @@ export function createApp(
   });
   app.post('/api/import/validate', async (req, res) => {
     const doc = await bank.resolveImport(req.body.document);
-    checkAssets(doc);
+    await checkAssets(doc);
     res.json({
       document: doc,
       classification: await bank.curriculum.classification(doc),
@@ -209,7 +224,7 @@ export function createApp(
   });
   app.post('/api/import', async (req, res) => {
     const doc = await bank.resolveImport(req.body.document);
-    checkAssets(doc);
+    await checkAssets(doc);
     const result = req.body.questionId
       ? await bank.save(
           req.body.questionId,
@@ -256,7 +271,7 @@ export function createApp(
   });
   app.put('/api/questions/:id', async (req, res) => {
     const doc = await bank.validate(req.body.document);
-    checkAssets(doc);
+    await checkAssets(doc);
     res.json(
       await bank.save(
         String(req.params.id),
@@ -318,56 +333,36 @@ export function createApp(
   );
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+    limits: { fileSize: maxAssetBytes, files: 1 },
   });
-  app.post('/api/uploads', upload.single('file'), (req, res) => {
-    if (!uploadDir) throw new BankError('Durable upload storage is not configured', 503);
-    const file = req.file;
-    if (!file) throw new BankError('Choose a file');
-    const b = file.buffer;
-    let ext = '',
-      mime = '';
-    if (b.subarray(0, 5).toString() === '%PDF-') {
-      ext = 'pdf';
-      mime = 'application/pdf';
-    } else if (b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-      ext = 'png';
-      mime = 'image/png';
-    } else if (b[0] === 255 && b[1] === 216 && b[2] === 255) {
-      ext = 'jpg';
-      mime = 'image/jpeg';
-    } else if (b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP') {
-      ext = 'webp';
-      mime = 'image/webp';
-    } else if (/^(?:\s*<\?xml[^>]*\?>)?\s*<svg[\s>]/i.test(b.toString('utf8'))) {
-      const svg = b.toString('utf8');
-      const references = [
-        ...[...svg.matchAll(/(?:href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi)].map((m) => m[1]),
-        ...[...svg.matchAll(/url\s*\(\s*([^)]*)\)/gi)].map((m) => m[1]),
-      ];
-      if (
-        /<\s*(script|foreignObject|iframe|style|object|embed)|\bon\w+\s*=|<!ENTITY|<!DOCTYPE/i.test(
-          svg,
-        ) ||
-        references.some(
-          (value) => !/^#[a-zA-Z0-9_.:-]+$/.test(value.trim().replace(/^["']|["']$/g, '')),
-        )
-      )
-        throw new BankError('SVG contains active or externally referenced content');
-      ext = 'svg';
-      mime = 'image/svg+xml';
-    }
-    if (!ext) throw new BankError('Supported files: SVG, PNG, JPEG, WebP, PDF');
-    const name = `${randomUUID()}.${ext}`;
-    writeFileSync(join(uploadDir, name), b);
-    res.status(201).json({ url: `/uploads/${name}`, mime, name: file.originalname });
-  });
+  app.post(
+    '/api/uploads',
+    (req, _res, next) => {
+      if (!assets) throw new AssetStorageError('Asset storage is not configured');
+      next();
+    },
+    upload.single('file'),
+    async (req, res) => {
+      const file = req.file;
+      if (!file) throw new BankError('Choose a file');
+      const stored = await assets!.upload(file.buffer, file.originalname, file.mimetype);
+      console.info('Asset staged', stored.url);
+      res.status(201).json({
+        url: stored.url,
+        mime: stored.mime,
+        name: stored.name,
+        size: stored.size,
+        sha256: stored.sha256,
+        state: 'staged',
+      });
+    },
+  );
   app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found' }));
   app.use(
     (error: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (res.headersSent) return next(error);
       const status =
-        error instanceof BankError
+        error instanceof BankError || error instanceof AssetStorageError
           ? error.status
           : error instanceof multer.MulterError
             ? 400
@@ -378,18 +373,20 @@ export function createApp(
                 : 500;
       // Transport errors can embed credentials or URLs; never log raw errors.
       if (status >= 500) console.error('Question Bank request failed');
-      res
-        .status(status)
-        .json({
-          error:
-            error instanceof BankError || error instanceof multer.MulterError
-              ? error.message
-              : status === 400
-                ? 'Invalid JSON request'
-                : status === 413
-                  ? 'Request too large'
-                  : 'Unexpected server error',
-        });
+      if (error instanceof AssetWriteFailure)
+        console.error('Asset reconciliation required', error.code, error.reconciliationReference);
+      res.status(status).json({
+        error:
+          error instanceof BankError ||
+          error instanceof AssetStorageError ||
+          error instanceof multer.MulterError
+            ? error.message
+            : status === 400
+              ? 'Invalid JSON request'
+              : status === 413
+                ? 'Request too large'
+                : 'Unexpected server error',
+      });
     },
   );
   return app;

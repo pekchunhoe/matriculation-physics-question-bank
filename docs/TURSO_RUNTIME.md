@@ -69,7 +69,9 @@ routes `/api/*` to the Node function exported by `api/index.ts`, and sends front
 routes to `index.html`. The Express function receives the original API path, uses
 relative frontend API calls, and never calls `listen()` or initializes local file
 storage. API errors remain JSON rather than falling through to the frontend SPA.
-`/uploads/*` also reaches the function and reports unavailable durable storage.
+`/uploads/*` also reaches the function. Private delivery remains forbidden until
+authorization exists, or reports unavailable storage when configuration is absent.
+See [private Blob setup and retention](ASSET_STORAGE.md).
 
 In Vercel Project Settings:
 
@@ -96,7 +98,8 @@ GET /api/taxonomy               → semesters and LEGACY curriculum
 GET /api/curriculum-versions    → existing LEGACY version
 GET /api/questions              → an empty page, total 0
 POST /api/questions             → 403 (hosted writes disabled)
-POST /api/uploads               → 503 (durable storage unavailable)
+POST /api/uploads               → 403 (hosted writes disabled)
+GET /uploads/<file>             → 403 (private delivery disabled), or 503 if unconfigured
 GET /api/unknown                → 404 JSON
 ```
 
@@ -114,12 +117,15 @@ read authorization in this stage. Teacher-facing read endpoints and answer expor
 retain their existing behavior; use a private preview and add real server-side roles
 before exposing sensitive materials or enabling writes.
 
-Local upload signature validation, sandbox CSP, MIME checks and unique names remain
-intact. Vercel cannot use `data/uploads` as durable archive storage, so the hosted
-function does not create a directory, accept uploaded bytes or serve local files.
-Upload/asset requests receive 503 until durable object storage is implemented.
-Historical `/uploads/` asset links are not rewritten. No PDFs/images were placed in
-Turso, migrated or deleted.
+Local upload validation, sandbox CSP, MIME checks and unique names remain intact;
+SVG parsing and content integrity validation are strengthened. Local authoring
+uses `data/uploads`. The hosted function now selects Vercel Private Blob when
+connected, with SDK-managed project OIDC. It never creates filesystem storage.
+Uploads return 403 before multipart/storage operations. Private asset delivery
+returns 403 until authorization is implemented; unconfigured delivery returns 503.
+Opaque `/uploads/` references are retained without exposing raw Blob URLs. No
+PDFs/images were placed in Turso, migrated or deleted. See [asset storage](ASSET_STORAGE.md)
+for the manual private-store connection and remaining authorization/lifecycle gaps.
 
 ## Transactions and explicit migrations
 
@@ -166,6 +172,7 @@ npm run db:check
 npm run schema:check
 npm run api:check
 npm run api:esm:check
+npm run storage:check
 npm run build
 npm run test:browser
 git diff --check

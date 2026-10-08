@@ -14,9 +14,12 @@ const result = await build({
   logLevel: 'silent',
 });
 const inputs = Object.keys(result.metafile!.inputs);
-assert.ok(!inputs.some((file) => /sqlite-adapter|test-bank|fixtures/.test(file)));
+assert.ok(
+  !inputs.some((file) => /sqlite-adapter|local-asset-storage|test-bank|fixtures/.test(file)),
+);
 assert.ok(!result.outputFiles![0].text.includes('node:sqlite'));
 assert.ok(!result.outputFiles![0].text.includes('bank.sqlite'));
+assert.ok(!result.outputFiles![0].text.includes('data/uploads'));
 const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
 assert.equal(config.functions['api/index.ts'].includeFiles, 'server/migrations/*.sql');
 console.log('Vercel API bundle, runtime import graph and SQLite independence: PASS');

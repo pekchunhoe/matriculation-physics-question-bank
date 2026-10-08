@@ -46,7 +46,7 @@ try {
   assert.equal((await listing.json()).total, 0);
   assert.equal((await fetch(base + '/api/curriculum-versions')).status, 200);
   assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 403);
-  assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 503);
+  assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 403);
   assert.deepEqual(readdirSync(emptyDirectory), []);
   writeFileSync(
     output,
