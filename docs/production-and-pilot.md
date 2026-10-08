@@ -1,5 +1,12 @@
 # Production findings and first-question pilot
 
+Current implementation (2026-10-09): Turso runtime, Vercel API, Private Blob and
+admin-only authorization are implemented locally. Students browse approved
+questions/schemes and print public selections without login. Migration 003,
+first-admin creation and a protected Preview smoke remain manual; no production
+action was performed. Follow [current security/setup instructions](ADMIN_SECURITY.md).
+The dated audit below is historical evidence, not current deployment guidance.
+
 Read-only checks on 7 October 2026: [the supplied Vercel frontend](https://matriculation-physics-question-bank.vercel.app/) returned HTTP 200; `/api/taxonomy` and `/api/questions` returned HTTP 404. This checkout has no Vercel API adapter/configuration, hosted database/storage integration or authenticated authorization. No separate backend configuration was supplied during the audit. No production mutation/deployment occurred.
 
 Vite production build succeeds, verifying frontend build compatibility. It does not establish a working Vercel backend. Hosted onboarding requires identifying/provisioning and verifying the durable backend/storage/authentication arrangement. The existing Node 24 SQLite/Express runtime needs persistent database/upload storage. Public exposure requires server-enforced authentication and roles.

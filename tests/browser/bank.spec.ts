@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './admin-fixture.js';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import type { QuestionDocument } from '../../shared/schema';

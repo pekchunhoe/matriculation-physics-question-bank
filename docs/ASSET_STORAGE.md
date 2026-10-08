@@ -2,8 +2,9 @@
 
 Turso stores relational metadata and references. File bytes use local filesystem
 storage for ordinary local authoring and Vercel Private Blob in hosted functions.
-The storage foundation is implemented; hosted uploads and private delivery remain
-disabled until real server-side authorization is available. No live store was
+Admin-only upload and resource-authorized public/private delivery are implemented.
+See [authentication and access policy](ADMIN_SECURITY.md); migration 003 and manual
+first-admin setup are required before deployment. No live store was
 created, connected or written by this task.
 
 ## Audit of the previous flow
@@ -62,37 +63,35 @@ calculate a digest without rewriting the file or question metadata.
 
 ## Security and route behavior
 
-| Request                       | Local authoring                                    | Hosted, configured private store | Hosted, unavailable config    |
-| ----------------------------- | -------------------------------------------------- | -------------------------------- | ----------------------------- |
-| `POST /api/uploads`           | 201 after validation                               | 403 before Blob/multipart I/O    | 403 before Blob/multipart I/O |
-| Other protected API mutations | Existing local behavior                            | 403                              | 403                           |
-| `GET/HEAD /uploads/<file>`    | Validated bytes, sandbox/nosniff; ranges supported | 403                              | 503                           |
-| `GET /api/health`             | Existing database health                           | Existing database health         | Existing database health      |
+| Request                            | Local                                             | Hosted                           |
+| ---------------------------------- | ------------------------------------------------- | -------------------------------- |
+| Authoring mutations/upload         | Admin session + CSRF required                     | Admin session + CSRF required    |
+| Anonymous authoring                | 401 before multipart/storage I/O                  | 401 before multipart/storage I/O |
+| GET/HEAD uploads                   | Approved current non-source relationship or admin | Same, through Private Blob       |
+| Private/staged bytes without admin | 404                                               | 404                              |
+| Unconfigured storage delivery      | 503                                               | 503                              |
+| Health                             | Existing database status; no Blob I/O             | Same                             |
 
-403 means authorization is missing; 503 on delivery means storage configuration
-is unavailable. There is no anonymous proxy, redirect, signed URL or client upload
-token endpoint. Query parameters such as `view=teacher` cannot enable delivery.
-Internal trusted code can retrieve private bytes through `storage.get(key)`; no
-HTTP route exposes that operation yet. Local delivery remains for loopback
-development, not as hosted authorization.
+The server checks owning current approved question/snapshot and asset kind before
+provider retrieval. Teacher notes/source PDFs/history/candidates stay private.
+An admin's public approved reference explicitly publishes shared bytes. No raw
+private URL, redirect, signed delivery URL, browser token or credential is exposed.
+Query flags cannot authorize. Responses retain private/no-store cache policy,
+SVG sandbox CSP, nosniff, inline content type and bounded single byte ranges.
 
-The 20 MiB validation limit is preserved. Empty files, unsafe display filenames,
-path traversal, encoded paths, control/format characters, unsupported signatures,
-extension mismatches and incompatible declared MIME types are rejected. Browser
-`application/octet-stream` falls back to validated content detection. SVG is
-parsed as well-formed UTF-8 XML using `saxes`, with a restricted SVG element set,
-namespace checks, fragment-only references and no scripting, events, animation,
-DOCTYPE/entities, processing instructions, foreign content or external resources.
-Rejected SVG is not rewritten. CSP sandbox and nosniff remain on local delivery.
-This accepts static diagrams, paths, text, gradients, markers, clipping and masks;
-flatten unsupported SVG features before uploading.
+Local upload limit remains 20 MiB. Hosted files/delivery are capped at 3 MiB;
+admin multipart allows one file/no fields and declared requests over 3.5 MiB are
+rejected. This fits below Vercel's 4.5 MB function payload limit; large hosted-file
+architecture remains a separate task. No direct browser-to-Blob bypass exists.
+[Vercel payload limit](https://vercel.com/docs/errors/function_payload_too_large).
 
-Vercel's function request-body limit is 4.5 MB, including multipart overhead.
-The local 20 MiB limit does not override that platform limit. Future authenticated
-hosted authoring must either impose a smaller request limit or introduce a
-separately authorized large-file workflow with server-side validation before
-linking. No direct browser Blob uploads were added in this stage.
-[Vercel server-upload limits](https://vercel.com/docs/vercel-blob/server-upload).
+Validation rejects empty files, unsafe/encoded names, traversal, control/format
+characters, unsupported signatures, extension mismatches and declared MIME
+mismatches. Octet-stream falls back to content detection. SVG requires well-formed
+UTF-8 XML, restricted static elements/namespaces and fragment-only references,
+without scripts, events, animation, DOCTYPE/entities, processing instructions,
+foreign content or external resources. Unsupported SVG features must be flattened;
+rejected files are not rewritten. Digest/integrity checks remain unchanged.
 
 ## Consistency and retention
 
@@ -103,8 +102,8 @@ or rejected later save may leave a staged object. It is retained for retry and
 must be reconciled separately; it is not silently treated as a linked record.
 No automatic garbage collector or general delete route was added.
 
-`AssetService.uploadAndLink` is the internal foundation for a future authenticated
-combined operation. Its persistence callback must use the existing transactional
+`AssetService.uploadAndLink` is the internal helper for a combined
+operation. Its persistence callback must use the existing transactional
 question/revision writes and must not publish the new reference before success.
 On failure, it audits current assets, all immutable version snapshots, all revision
 candidate snapshots (including rejected candidates), and PDF source references.
@@ -125,9 +124,9 @@ an invocation; they are not a durable ownership ledger. Retain objects reference
 by any current/history/revision record. For a future orphan cleanup, stop authoring,
 audit every reference source and storage namespace, then explicitly review only
 unreferenced staged objects. Do not bulk-delete by filename or age while authors
-may still attach staged references. Wiring authenticated operations to the combined
-helper and adding a durable staged-upload lifecycle belong to the authorization
-stage; this task preserves the existing editor workflow.
+may still attach staged references. A combined upload/link endpoint and durable
+staging lifecycle remain future work; authentication preserves the existing
+two-step editor workflow and its retry/retention rules.
 
 ## Manual Vercel setup
 
@@ -148,13 +147,13 @@ stage; this task preserves the existing editor workflow.
    [SDK project authentication](https://vercel.com/docs/vercel-blob/using-blob-sdk#authentication).
 4. Keep the existing Turso server variables, Node 24.x, Vercel routing and Preview
    Deployment Protection. Review changes before any manual Preview deployment.
-5. After a manual Preview deployment, confirm database health is unchanged,
-   mutations/uploads return 403 and private delivery returns 403. These checks
-   do not upload objects and do not prove live Blob read/write readiness.
-6. Implement real server-side teacher authorization before enabling hosted
-   upload/read operations. Then test with disposable content in the separate
-   protected Preview store, verify persistence across invocations and cleanup,
-   and review object/reference consistency before any real import.
+5. Review and manually apply auth migration 003 and first-admin bootstrap in
+   the intended database before deploying. Authentication needs server-only
+   Turso write credentials. See [explicit security setup](ADMIN_SECURITY.md).
+6. After a manual protected Preview deployment, verify health, anonymous write
+   rejection, login/session/logout, public approved diagrams/schemes, private
+   source denial and disposable authenticated uploads across invocations. Use a
+   separate scratch database/private store before any real content import.
 
 Ordinary local authoring requires no Blob environment or credentials and continues
 using `data/uploads`. There is no live Blob tooling/smoke command in this change.
@@ -167,6 +166,7 @@ production credentials in ordinary tests. Storage variables must never have a
 
 ```powershell
 npm run storage:check
+npm run auth:check
 npm run typecheck
 npm run lint
 npm test

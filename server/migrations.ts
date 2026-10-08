@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { DatabaseAdapter } from './database-adapter.js';
 
-export const currentMigration = 2;
+export const currentMigration = 3;
 
 /** Explicit administrative operation; hosted request initialization never runs it. */
 export async function applyMigrations(
@@ -61,6 +61,13 @@ export async function assertCurrentSchema(db: DatabaseAdapter) {
     'SELECT question_id,version_number,snapshot FROM question_version_classifications LIMIT 0',
   );
   await db.execute('SELECT id,kind,entity_id,after_json FROM curriculum_events LIMIT 0');
+  await db.execute('SELECT id,email,password_hash,role,disabled FROM admins LIMIT 0');
+  await db.execute(
+    'SELECT token_digest,admin_id,expires_at,revoked_at FROM admin_sessions LIMIT 0',
+  );
+  await db.execute(
+    'SELECT bucket,window_start,attempts,expires_at FROM security_rate_limits LIMIT 0',
+  );
   await db.execute(
     'SELECT question_id FROM question_search WHERE question_search MATCH ? LIMIT 0',
     ['"health"'],

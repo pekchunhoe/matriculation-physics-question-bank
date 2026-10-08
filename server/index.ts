@@ -12,7 +12,7 @@ const bank = await connectRuntimeBank().catch(() => {
   );
   process.exit(1);
 });
-const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')), { allowWrites: true });
+const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')));
 if (process.env.NODE_ENV === 'production' || process.argv.includes('--production')) {
   app.use(express.static(resolve('dist')));
   app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));

@@ -21,7 +21,7 @@ export function createApiHandler(
         } catch {
           /* Invalid storage configuration fails closed without breaking DB health. */
         }
-        app = createApp(await loadBank(), storage, { allowWrites: false });
+        app = createApp(await loadBank(), storage, { hosted: true });
       }
     } catch {
       if (req.url?.split('?')[0] === '/api/health')

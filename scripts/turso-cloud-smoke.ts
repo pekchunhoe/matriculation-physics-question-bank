@@ -72,7 +72,7 @@ try {
   assert.equal(await bank.one('SELECT id FROM tags WHERE id=?', 'test-rollback-tag'), undefined);
   assert.equal((await bank.list()).total, before);
   checks.rollback = true;
-  const server = createApp(bank, undefined, { allowWrites: false }).listen(0, '127.0.0.1');
+  const server = createApp(bank, undefined).listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
   try {
     const address = server.address();
@@ -82,7 +82,7 @@ try {
       status: 'ok',
       database: 'connected',
     });
-    assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 403);
+    assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 401);
     checks.health = true;
     checks.hostedWriteProtection = true;
   } finally {

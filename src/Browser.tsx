@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
 import { api } from './api';
 import { Field } from './components';
+import { useAuth } from './Auth';
 type Card = {
   id: string;
   question_code: string;
@@ -30,6 +31,8 @@ type Count = {
   count: number;
 };
 export function Browser({ tax }: { tax: Taxonomy }) {
+  const { session } = useAuth();
+  const [selection, setSelection] = useState<{ id: string; title: string }[]>([]);
   const initial = () => Object.fromEntries(new URLSearchParams(location.search));
   const [filters, setFilters] = useState<Record<string, string>>(() => ({
     status: 'approved',
@@ -146,13 +149,47 @@ export function Browser({ tax }: { tax: Taxonomy }) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">TEACHER LIBRARY</p>
+          <p className="eyebrow">
+            {session.authenticated ? 'TEACHER LIBRARY' : 'PUBLIC QUESTION BANK'}
+          </p>
           <h1>Question bank</h1>
           <p>Browse by semester, topic and difficulty.</p>
         </div>
         <span className="count-label">{results?.total ?? '—'} matching questions</span>
       </div>
       {select('Course', 'course', tax.courses)}
+      <section className="panel" aria-label="Question selection">
+        <h2>Question selection ({selection.length}/20)</h2>
+        <p>Select approved questions in the order you want to print them.</p>
+        {selection.length > 0 && (
+          <>
+            <ol>
+              {selection.map((item) => (
+                <li key={item.id}>
+                  {item.title}{' '}
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      setSelection((items) => items.filter((selected) => selected.id !== item.id))
+                    }
+                  >
+                    Remove {item.title}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <a
+              className="button"
+              href={'/question-set?ids=' + selection.map((item) => item.id).join(',')}
+            >
+              Prepare question set
+            </a>
+            <button className="button" onClick={() => setSelection([])}>
+              Clear selection
+            </button>
+          </>
+        )}
+      </section>
       <details className="panel">
         <summary>Curriculum version and retired items</summary>
         <div className="form-grid">
@@ -194,7 +231,9 @@ export function Browser({ tax }: { tax: Taxonomy }) {
             <span>{s.name}</span>
             <strong>
               {count('semester_id', s.id)}
-              <small> questions · all statuses</small>
+              <small>
+                {session.authenticated ? ' questions · all statuses' : ' approved questions'}
+              </small>
             </strong>
             <span className="semester-action">Browse questions</span>
           </button>
@@ -237,14 +276,15 @@ export function Browser({ tax }: { tax: Taxonomy }) {
             <summary>More filters</summary>
             {select('Chapter', 'chapter', chapters)}
             {select('Subtopic', 'subtopic', subtopics)}
-            {select(
-              'Status',
-              'status',
-              ['draft', 'reviewing', 'approved', 'retired'].map((id) => ({
-                id,
-                name: id[0].toUpperCase() + id.slice(1),
-              })),
-            )}
+            {session.authenticated &&
+              select(
+                'Status',
+                'status',
+                ['draft', 'reviewing', 'approved', 'retired'].map((id) => ({
+                  id,
+                  name: id[0].toUpperCase() + id.slice(1),
+                })),
+              )}
             {select(
               'Question type',
               'type',
@@ -403,12 +443,34 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                       .join(' · ') || 'No supporting assets'}
                   </p>
                   <div className="actions">
+                    {q.status === 'approved' && (
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          aria-label={'Select ' + q.question_code}
+                          checked={selection.some((item) => item.id === q.id)}
+                          disabled={
+                            selection.length >= 20 && !selection.some((item) => item.id === q.id)
+                          }
+                          onChange={(event) =>
+                            setSelection((items) =>
+                              event.target.checked
+                                ? [...items, { id: q.id, title: q.title }]
+                                : items.filter((item) => item.id !== q.id),
+                            )
+                          }
+                        />
+                        Select
+                      </label>
+                    )}
                     <a className="button" href={'/questions/' + q.id + '?view=student'}>
                       Preview
                     </a>
-                    <a className="button" href={'/edit/' + q.id}>
-                      Edit
-                    </a>
+                    {session.authenticated && (
+                      <a className="button" href={'/edit/' + q.id}>
+                        Edit
+                      </a>
+                    )}
                     <a className="text-link" href={'/questions/' + q.id}>
                       View solution
                     </a>

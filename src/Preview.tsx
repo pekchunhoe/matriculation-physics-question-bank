@@ -4,6 +4,7 @@ import type { Difference } from '../server/revisions';
 import { api, json, download } from './api';
 import { Field, QuestionMetadata, type LoadedQuestion } from './components';
 import { Equation, MathText } from './MathText';
+import { useAuth } from './Auth';
 
 function Assets({ items }: { items: Asset[] }) {
   return (
@@ -28,7 +29,15 @@ function Assets({ items }: { items: Asset[] }) {
     </div>
   );
 }
-export function ContentPreview({ doc, teacher }: { doc: QuestionDocument; teacher: boolean }) {
+export function ContentPreview({
+  doc,
+  teacher,
+  print = false,
+}: {
+  doc: QuestionDocument;
+  teacher: boolean;
+  print?: boolean;
+}) {
   const [revealed, setRevealed] = useState<Record<string, number>>({});
   useEffect(() => setRevealed({}), [doc, teacher]);
   const hints = (partId: string | null) => {
@@ -39,13 +48,13 @@ export function ContentPreview({ doc, teacher }: { doc: QuestionDocument; teache
     return (
       <div className="hint-block">
         <h3>Student hints</h3>
-        {items.slice(0, teacher ? items.length : count).map((h, i) => (
+        {items.slice(0, teacher || print ? items.length : count).map((h, i) => (
           <div className="hint" key={h.id}>
             <strong>Hint {i + 1}</strong>
             <MathText value={h.text} />
           </div>
         ))}
-        {!teacher && count < items.length && (
+        {!teacher && !print && count < items.length && (
           <button
             className="button"
             onClick={() => setRevealed((v) => ({ ...v, [key]: count + 1 }))}
@@ -196,6 +205,8 @@ const display = (value: unknown) =>
       ? JSON.stringify(value, null, 2)
       : String(value);
 export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
+  const { session } = useAuth();
+  const admin = session.authenticated;
   const teacher = new URLSearchParams(location.search).get('view') !== 'student';
   const [selected, setSelected] = useState(
     new URLSearchParams(location.search).get('version') ?? '',
@@ -221,7 +232,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
       .catch((e) => setError(e.message));
   }, [id, teacher, selected, refresh]);
   useEffect(() => {
-    if (teacher) {
+    if (teacher && admin) {
       void api<Version[]>('/questions/' + id + '/versions')
         .then(setVersions)
         .catch((e) => setError(e.message));
@@ -229,7 +240,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
         .then(setCandidates)
         .catch((e) => setError(e.message));
     }
-  }, [id, teacher, refresh]);
+  }, [id, teacher, admin, refresh]);
   async function review(candidateId: string, approve: boolean) {
     setBusy(true);
     setError('');
@@ -253,7 +264,9 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">{teacher ? 'TEACHER VIEW' : 'STUDENT PREVIEW'}</p>
+          <p className="eyebrow">
+            {teacher ? (admin ? 'TEACHER VIEW' : 'MARKING SCHEME') : 'STUDENT PREVIEW'}
+          </p>
           <h1>{q?.title ?? 'Question preview'}</h1>
           <p>
             {selected && loaded?.savedClassification ? (
@@ -268,9 +281,9 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
         </div>
         <div className="actions">
           <a className="button" href={'/questions/' + id + (teacher ? '?view=student' : '')}>
-            {teacher ? 'Student preview' : 'Teacher view'}
+            {teacher ? 'Student preview' : admin ? 'Teacher view' : 'View marking scheme'}
           </a>
-          {teacher && (
+          {teacher && admin && (
             <a className="button primary" href={'/edit/' + id}>
               Edit question
             </a>
@@ -284,7 +297,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
       )}
       {loaded && (
         <>
-          {teacher && (
+          {teacher && admin && (
             <div className="version-controls">
               <span className={'badge ' + q?.status}>{q?.status}</span>
               <span>
@@ -332,7 +345,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
               </button>
             </div>
           )}
-          {teacher && (
+          {teacher && admin && (
             <QuestionMetadata doc={loaded.document} tax={tax} saved={loaded.savedClassification} />
           )}
           {loaded.warnings.map((w) => (
@@ -347,7 +360,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
           />
         </>
       )}
-      {teacher && (
+      {teacher && admin && (
         <>
           <section className="panel">
             <h2>Version history</h2>

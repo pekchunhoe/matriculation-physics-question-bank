@@ -1,8 +1,12 @@
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch('/api' + path, {
     ...init,
+    credentials: 'same-origin',
     headers: {
       ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(!['GET', 'HEAD', 'OPTIONS'].includes(init?.method?.toUpperCase() ?? 'GET')
+        ? { 'X-Question-Bank-Request': '1' }
+        : {}),
       ...init?.headers,
     },
   });

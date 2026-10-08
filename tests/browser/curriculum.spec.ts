@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from './admin-fixture.js';
+import type { APIRequestContext } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import type { QuestionDocument, Taxonomy } from '../../shared/schema';

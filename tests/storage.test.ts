@@ -22,6 +22,8 @@ import {
 import { AssetService, AssetConsistencyError } from '../server/asset-service.js';
 import { assetKeyFromReference } from '../shared/asset-reference.js';
 import { createApp } from '../server/app.js';
+import { seedAdminSession, authenticatedFetch } from './auth-fixture.js';
+import type { Bank } from '../server/database.js';
 import { createApiHandler } from '../server/vercel-handler.js';
 import { setup } from './fixtures.js';
 import { createTestBank } from './test-bank.js';
@@ -115,7 +117,11 @@ function blobFixture() {
     faults,
   };
 }
-async function withHttp(handler: RequestHandler, fn: (base: string) => Promise<void>) {
+async function withHttp(
+  handler: RequestHandler,
+  fn: (base: string, fetch: typeof globalThis.fetch) => Promise<void>,
+  adminBank?: Bank,
+) {
   const app = express();
   app.use(handler);
   const server = app.listen(0, '127.0.0.1');
@@ -123,7 +129,10 @@ async function withHttp(handler: RequestHandler, fn: (base: string) => Promise<v
   const address = server.address();
   assert.ok(address && typeof address === 'object');
   try {
-    await fn(`http://127.0.0.1:${address.port}`);
+    await fn(
+      `http://127.0.0.1:${address.port}`,
+      adminBank ? authenticatedFetch(await seedAdminSession(adminBank)) : globalThis.fetch,
+    );
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
   }
@@ -373,16 +382,16 @@ test('Hosted handler protects uploads and private reads without storage I/O or l
       async () => bank,
       () => env.storage,
     );
-    await withHttp(handler, async (base) => {
+    await withHttp(handler, async (base, fetch) => {
       assert.deepEqual(await (await fetch(base + '/api/health')).json(), {
         status: 'ok',
         database: 'connected',
       });
       for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'])
-        assert.equal((await fetch(base + '/api/uploads', { method })).status, 403);
+        assert.equal((await fetch(base + '/api/uploads', { method })).status, 401);
       for (const method of ['GET', 'HEAD'])
-        assert.equal((await fetch(base + '/uploads/test.pdf', { method })).status, 403);
-      assert.equal((await fetch(base + '/uploads/test.pdf?view=teacher&admin=true')).status, 403);
+        assert.equal((await fetch(base + '/uploads/test.pdf', { method })).status, 404);
+      assert.equal((await fetch(base + '/uploads/test.pdf?view=teacher&admin=true')).status, 404);
     });
     assert.equal(env.calls.length, 0);
     assert.deepEqual(readdirSync(temp.directory), []);
@@ -405,8 +414,8 @@ test('Hosted handler fails closed on unavailable configuration and rejects even 
     ])
       await withHttp(
         createApiHandler(async () => bank, factory),
-        async (base) => {
-          assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 403);
+        async (base, fetch) => {
+          assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 401);
           const read = await fetch(base + '/uploads/test.pdf');
           assert.equal(read.status, 503);
           assert.deepEqual(await read.json(), { error: 'Asset storage is not configured' });
@@ -420,34 +429,38 @@ test('Hosted handler fails closed on unavailable configuration and rejects even 
   }
 });
 
-test('Private upload API in an isolated trusted server returns opaque references and keeps delivery forbidden', async () => {
+test('Private upload API in an isolated trusted server returns opaque references and authorizes private delivery through a real admin session', async () => {
   const bank = await createTestBank(),
     env = blobFixture();
   try {
-    await withHttp(createApp(bank, env.storage, { allowWrites: true }), async (base) => {
-      const form = new FormData();
-      form.append('file', new Blob([pdf], { type: 'application/pdf' }), 'archive.pdf');
-      const response = await fetch(base + '/api/uploads', { method: 'POST', body: form });
-      assert.equal(response.status, 201);
-      const uploaded = await response.json();
-      assert.equal(uploaded.state, 'staged');
-      assert.ok(assetKeyFromReference(uploaded.url));
-      assert.equal(uploaded.sha256.length, 64);
-      assert.ok(!JSON.stringify(uploaded).includes('blob.vercel-storage.com'));
-      assert.equal((await fetch(base + uploaded.url)).status, 403);
-      assert.equal((await bank.all('SELECT * FROM assets')).length, 0);
-      const unsafe = new FormData();
-      unsafe.append(
-        'file',
-        new Blob(['<svg><script>alert(1)</script></svg>'], { type: 'image/svg+xml' }),
-        'unsafe.svg',
-      );
-      assert.equal(
-        (await fetch(base + '/api/uploads', { method: 'POST', body: unsafe })).status,
-        400,
-      );
-      assert.equal(env.calls.filter((call) => call.operation === 'put').length, 1);
-    });
+    await withHttp(
+      createApp(bank, env.storage),
+      async (base, fetch) => {
+        const form = new FormData();
+        form.append('file', new Blob([pdf], { type: 'application/pdf' }), 'archive.pdf');
+        const response = await fetch(base + '/api/uploads', { method: 'POST', body: form });
+        assert.equal(response.status, 201);
+        const uploaded = await response.json();
+        assert.equal(uploaded.state, 'staged');
+        assert.ok(assetKeyFromReference(uploaded.url));
+        assert.equal(uploaded.sha256.length, 64);
+        assert.ok(!JSON.stringify(uploaded).includes('blob.vercel-storage.com'));
+        assert.equal((await fetch(base + uploaded.url)).status, 200);
+        assert.equal((await bank.all('SELECT * FROM assets')).length, 0);
+        const unsafe = new FormData();
+        unsafe.append(
+          'file',
+          new Blob(['<svg><script>alert(1)</script></svg>'], { type: 'image/svg+xml' }),
+          'unsafe.svg',
+        );
+        assert.equal(
+          (await fetch(base + '/api/uploads', { method: 'POST', body: unsafe })).status,
+          400,
+        );
+        assert.equal(env.calls.filter((call) => call.operation === 'put').length, 1);
+      },
+      bank,
+    );
   } finally {
     await bank.close();
   }
@@ -462,16 +475,20 @@ test('API storage failure responses cannot leak SDK credentials, raw URLs or sta
   });
   env.faults.operation = 'put';
   try {
-    await withHttp(createApp(bank, env.storage, { allowWrites: true }), async (base) => {
-      const form = new FormData();
-      form.append('file', new Blob([pdf]), 'archive.pdf');
-      const response = await fetch(base + '/api/uploads', { method: 'POST', body: form });
-      assert.equal(response.status, 503);
-      const result = await response.json();
-      assert.deepEqual(result, { error: 'Asset upload failed; reconciliation may be required' });
-      assert.ok(!JSON.stringify(logs).includes('TEST_ONLY_TRANSPORT_SECRET'));
-      assert.ok(logs.some((line) => line.includes('upload_uncertain')));
-    });
+    await withHttp(
+      createApp(bank, env.storage),
+      async (base, fetch) => {
+        const form = new FormData();
+        form.append('file', new Blob([pdf]), 'archive.pdf');
+        const response = await fetch(base + '/api/uploads', { method: 'POST', body: form });
+        assert.equal(response.status, 503);
+        const result = await response.json();
+        assert.deepEqual(result, { error: 'Asset upload failed; reconciliation may be required' });
+        assert.ok(!JSON.stringify(logs).includes('TEST_ONLY_TRANSPORT_SECRET'));
+        assert.ok(logs.some((line) => line.includes('upload_uncertain')));
+      },
+      bank,
+    );
   } finally {
     await bank.close();
   }
@@ -546,31 +563,35 @@ test('Existing two-step upload workflow retains staged bytes after a rejected sa
   const env = await setup(),
     blob = blobFixture();
   try {
-    await withHttp(createApp(env.bank, blob.storage, { allowWrites: true }), async (base) => {
-      const form = new FormData();
-      form.append('file', new Blob([pdf]), 'staged.pdf');
-      const upload = await (
-        await fetch(base + '/api/uploads', { method: 'POST', body: form })
-      ).json();
-      const doc = withAsset(env.fixture('TEST-STAGED-RETRY'), upload);
-      const bad = structuredClone(doc);
-      bad.question.topicId = 'TEST ONLY missing topic';
-      const rejected = await fetch(base + '/api/questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: bad, note: 'TEST ONLY rejected save' }),
-      });
-      assert.equal(rejected.status, 400);
-      assert.equal(blob.entries.size, 1);
-      assert.equal((await env.bank.all('SELECT * FROM assets')).length, 0);
-      const retry = await fetch(base + '/api/questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: doc, note: 'TEST ONLY successful retry' }),
-      });
-      assert.equal(retry.status, 201);
-      assert.equal((await env.bank.all('SELECT * FROM assets')).length, 1);
-    });
+    await withHttp(
+      createApp(env.bank, blob.storage),
+      async (base, fetch) => {
+        const form = new FormData();
+        form.append('file', new Blob([pdf]), 'staged.pdf');
+        const upload = await (
+          await fetch(base + '/api/uploads', { method: 'POST', body: form })
+        ).json();
+        const doc = withAsset(env.fixture('TEST-STAGED-RETRY'), upload);
+        const bad = structuredClone(doc);
+        bad.question.topicId = 'TEST ONLY missing topic';
+        const rejected = await fetch(base + '/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ document: bad, note: 'TEST ONLY rejected save' }),
+        });
+        assert.equal(rejected.status, 400);
+        assert.equal(blob.entries.size, 1);
+        assert.equal((await env.bank.all('SELECT * FROM assets')).length, 0);
+        const retry = await fetch(base + '/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ document: doc, note: 'TEST ONLY successful retry' }),
+        });
+        assert.equal(retry.status, 201);
+        assert.equal((await env.bank.all('SELECT * FROM assets')).length, 1);
+      },
+      env.bank,
+    );
   } finally {
     await env.bank.close();
   }
@@ -744,24 +765,62 @@ test('Local delivery preserves nosniff, SVG sandbox, MIME and byte range respons
     storage = new LocalAssetStorage(temp.directory);
   try {
     const upload = await storage.put(validateUpload(Buffer.from(svg), 'diagram.svg'));
-    await withHttp(createApp(bank, storage), async (base) => {
-      const full = await fetch(base + upload.url);
-      assert.equal(full.status, 200);
-      assert.equal(full.headers.get('x-content-type-options'), 'nosniff');
-      assert.ok(full.headers.get('content-security-policy')?.includes('sandbox'));
-      assert.ok(full.headers.get('content-type')?.includes('image/svg+xml'));
-      assert.equal(await full.text(), svg);
-      const part = await fetch(base + upload.url, { headers: { Range: 'bytes=0-3' } });
-      assert.equal(part.status, 206);
-      assert.equal(await part.text(), '<svg');
-      assert.equal(
-        (await fetch(base + upload.url, { headers: { Range: 'bytes=99999-' } })).status,
-        416,
-      );
-      assert.equal((await fetch(base + '/uploads/missing.svg')).status, 404);
-    });
+    await withHttp(
+      createApp(bank, storage),
+      async (base, fetch) => {
+        const full = await fetch(base + upload.url);
+        assert.equal(full.status, 200);
+        assert.equal(full.headers.get('x-content-type-options'), 'nosniff');
+        assert.ok(full.headers.get('content-security-policy')?.includes('sandbox'));
+        assert.ok(full.headers.get('content-type')?.includes('image/svg+xml'));
+        assert.equal(await full.text(), svg);
+        const part = await fetch(base + upload.url, { headers: { Range: 'bytes=0-3' } });
+        assert.equal(part.status, 206);
+        assert.equal(await part.text(), '<svg');
+        assert.equal(
+          (await fetch(base + upload.url, { headers: { Range: 'bytes=99999-' } })).status,
+          416,
+        );
+        assert.equal((await fetch(base + '/uploads/missing.svg')).status, 404);
+      },
+      bank,
+    );
   } finally {
     await bank.close();
     temp.dispose();
+  }
+});
+
+test('Private Blob bytes are mediated publicly only through approved current assets and staged bytes require admin', async () => {
+  const env = await setup(),
+    blob = blobFixture();
+  try {
+    const upload = await blob.storage.put(validateUpload(pdf, 'question.pdf'));
+    const doc = withAsset(env.fixture('TEST-BLOB-PUBLIC'), upload);
+    doc.question.status = 'approved';
+    const { id } = await env.bank.create(doc, 'TEST ONLY public asset', null, true);
+    const staged = await blob.storage.put(
+      validateUpload(Buffer.from('%PDF-1.7\nTEST ONLY private'), 'source.pdf'),
+    );
+    await withHttp(
+      createApp(env.bank, blob.storage),
+      async (base, adminFetch) => {
+        const publicRead = await fetch(base + upload.url);
+        assert.equal(publicRead.status, 200);
+        assert.equal(await publicRead.text(), pdf.toString());
+        assert.ok(!publicRead.headers.get('location'));
+        assert.ok(!JSON.stringify([...publicRead.headers]).includes('blob.vercel-storage.com'));
+        const reads = blob.calls.filter((call) => call.operation === 'get').length;
+        assert.equal((await fetch(base + staged.url)).status, 404);
+        assert.equal(blob.calls.filter((call) => call.operation === 'get').length, reads);
+        assert.equal((await adminFetch(base + staged.url)).status, 200);
+        await env.bank.run("UPDATE questions SET status='retired' WHERE id=?", id);
+        assert.equal((await fetch(base + upload.url)).status, 404);
+        assert.equal((await adminFetch(base + upload.url)).status, 200);
+      },
+      env.bank,
+    );
+  } finally {
+    await env.bank.close();
   }
 });

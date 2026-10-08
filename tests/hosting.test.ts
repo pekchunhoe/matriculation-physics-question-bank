@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createApp } from '../server/app.js';
 import { createApiHandler } from '../server/vercel-handler.js';
 import { createTestBank } from './test-bank.js';
+import { seedAdminSession, authenticatedFetch } from './auth-fixture.js';
 
 async function withHandler(handler: RequestHandler, fn: (base: string) => Promise<void>) {
   const app = express();
@@ -23,7 +24,7 @@ async function withHandler(handler: RequestHandler, fn: (base: string) => Promis
 test('/api/health checks connectivity and returns only safe status fields', async () => {
   const bank = await createTestBank();
   try {
-    await withHandler(createApp(bank, undefined, { allowWrites: false }), async (base) => {
+    await withHandler(createApp(bank, undefined), async (base) => {
       const health = await fetch(base + '/api/health');
       assert.equal(health.status, 200);
       assert.deepEqual(await health.json(), { status: 'ok', database: 'connected' });
@@ -41,7 +42,7 @@ test('/api/health checks connectivity and returns only safe status fields', asyn
 test('Hosted API blocks anonymous mutations and reports missing durable uploads', async () => {
   const bank = await createTestBank();
   try {
-    await withHandler(createApp(bank, undefined, { allowWrites: false }), async (base) => {
+    await withHandler(createApp(bank, undefined), async (base) => {
       for (const [method, path] of [
         ['POST', '/api/questions'],
         ['PUT', '/api/questions/test'],
@@ -50,8 +51,8 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
         ['POST', '/api/curriculum/import'],
         ['POST', '/api/revisions/test/review'],
       ])
-        assert.equal((await fetch(base + path, { method })).status, 403);
-      assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 403);
+        assert.equal((await fetch(base + path, { method })).status, 401);
+      assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 401);
       assert.equal((await fetch(base + '/uploads/test.pdf')).status, 503);
       assert.equal((await fetch(base + '/api/questions')).status, 200);
       assert.equal((await fetch(base + '/api/taxonomy')).status, 200);
@@ -66,7 +67,7 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
 test('Async Express transport errors do not expose stack traces, URLs or secrets', async () => {
   const bank = await createTestBank();
   await bank.close();
-  await withHandler(createApp(bank, undefined, { allowWrites: false }), async (base) => {
+  await withHandler(createApp(bank, undefined), async (base) => {
     const response = await fetch(base + '/api/taxonomy');
     assert.equal(response.status, 500);
     assert.deepEqual(await response.json(), { error: 'Unexpected server error' });
@@ -91,11 +92,15 @@ test('Vercel handler routes nested API requests without opening SQLite or upload
         200,
       );
       assert.equal(
-        (await fetch(base + '/api/curriculum-versions/legacy-matriculation-physics/export')).status,
+        (
+          await authenticatedFetch(await seedAdminSession(bank, true))(
+            base + '/api/curriculum-versions/legacy-matriculation-physics/export',
+          )
+        ).status,
         200,
       );
       assert.equal((await fetch(base + '/api/unknown')).status, 404);
-      assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 403);
+      assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 401);
       assert.equal(connections, 1);
     });
   } finally {

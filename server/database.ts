@@ -600,9 +600,13 @@ export class Bank {
       document: JSON.parse(String(c.snapshot)) as QuestionDocument,
     }));
   }
-  private query(filters: Filters) {
+  private query(filters: Filters, publicOnly = false) {
     const clauses: string[] = [];
     const params: SQLInputValue[] = [];
+    if (publicOnly)
+      clauses.push(
+        "q.status='approved' AND EXISTS(SELECT 1 FROM question_versions pv WHERE pv.question_id=q.id AND pv.version_number=q.active_version AND json_extract(pv.snapshot,'$.question.status')='approved')",
+      );
     if (filters.curriculum) {
       clauses.push(filters.curriculum === 'active' ? "cv.status='active'" : 'cv.id=?');
       if (filters.curriculum !== 'active') params.push(filters.curriculum);
@@ -673,8 +677,8 @@ export class Bank {
     }
     return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params };
   }
-  async list(filters: Filters = {}) {
-    const { where, params } = this.query(filters),
+  async list(filters: Filters = {}, publicOnly = false) {
+    const { where, params } = this.query(filters, publicOnly),
       join =
         ' FROM questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN courses co ON co.id=s.course_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id JOIN difficulty_levels d ON d.id=q.difficulty_id LEFT JOIN subtopics st ON st.id=q.subtopic_id';
     const page = Number(filters.page ?? 1),
@@ -695,9 +699,12 @@ export class Bank {
     );
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
-  async counts(course?: string) {
+  async counts(course?: string, publicOnly = false) {
     const rows = await this.all(
       'SELECT s.id semester_id,c.id chapter_id,t.id topic_id,q.difficulty_id,count(q.id) count FROM semesters s LEFT JOIN chapters c ON c.semester_id=s.id LEFT JOIN topics t ON t.chapter_id=c.id LEFT JOIN questions q ON q.topic_id=t.id' +
+        (publicOnly
+          ? " AND q.status='approved' AND EXISTS(SELECT 1 FROM question_versions pv WHERE pv.question_id=q.id AND pv.version_number=q.active_version AND json_extract(pv.snapshot,'$.question.status')='approved')"
+          : '') +
         (course ? ' WHERE s.course_id=?' : '') +
         ' GROUP BY s.id,c.id,t.id,q.difficulty_id',
       ...(course ? [course] : []),

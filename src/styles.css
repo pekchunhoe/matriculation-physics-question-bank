@@ -830,3 +830,43 @@ footer {
     margin-left: 0.8rem;
   }
 }
+/* Authentication and public print controls use the existing panel/button styles. */
+.admin-login {
+  max-width: 34rem;
+  margin: 2rem auto;
+}
+.admin-login form {
+  display: grid;
+  gap: 1rem;
+}
+@media print {
+  .topbar,
+  footer,
+  .print-controls {
+    display: none !important;
+  }
+  main {
+    max-width: none;
+    padding: 0;
+  }
+  .print-question {
+    break-before: page;
+  }
+  .print-question:first-child {
+    break-before: auto;
+  }
+  .paper,
+  .panel {
+    box-shadow: none;
+    border: 0;
+  }
+  .hint-block,
+  .solution-step,
+  figure {
+    break-inside: avoid;
+  }
+  .paper,
+  .answer-scheme {
+    overflow: visible;
+  }
+}

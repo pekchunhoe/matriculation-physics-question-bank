@@ -5,8 +5,10 @@ requests never open `data/bank.sqlite` or create SQLite WAL/SHM files. The SQLit
 adapter remains available explicitly for tests and recovery tooling. Tests never
 read Turso credentials or write to the production database.
 
-The current cloud database has repository migrations 001 and 002. Request startup
-checks its migration level and required structures; it does **not** run schema
+The previously verified cloud database has migrations 001 and 002. This checkout
+requires auth migration 003, which has not been applied to production. Follow
+[explicit migration and first-admin setup](ADMIN_SECURITY.md) before deployment.
+Startup checks migration level and structures; it does **not** run schema
 migrations. The original backup, SQL dump and migration verification artifacts
 remain immutable. Migration 002 reconstructs the existing taxonomy as LEGACY; it
 does not import an official syllabus or questions.
@@ -34,11 +36,11 @@ wsl /home/pekchunhoe/.turso/turso db show matriculation-physics-question-bank --
 wsl /home/pekchunhoe/.turso/turso db tokens create matriculation-physics-question-bank --read-only --expiration 30d
 ```
 
-The read-only token is appropriate for the currently read-only hosted API. Set a
-rotation reminder before expiry. A trusted local teacher authoring session needs a
-separate write-capable token; obtain it manually by omitting `--read-only`, retaining
-an explicit expiration. That write token must remain server-side and must not be
-used to enable anonymous hosted writes.
+The read-only token served the previous hosted-read-only stage. After review,
+authentication requires a scoped expiring server write token for session/throttle
+state and authorized authoring. Obtain it manually by omitting `--read-only` while
+retaining an explicit expiration. Never print/paste its value. Public visitors
+receive no token or database authoring privileges. Set a rotation reminder.
 
 For local setup, assign the two variables in your terminal without storing them in
 source. With those variables available to the process:
@@ -64,70 +66,46 @@ credentials; they do not launch the production bank.
 
 ## Vercel configuration
 
-Keep the same repository and deployment. `vercel.json` selects Vite, builds `dist`,
-routes `/api/*` to the Node function exported by `api/index.ts`, and sends frontend
-routes to `index.html`. The Express function receives the original API path, uses
-relative frontend API calls, and never calls `listen()` or initializes local file
-storage. API errors remain JSON rather than falling through to the frontend SPA.
-`/uploads/*` also reaches the function. Private delivery remains forbidden until
-authorization exists, or reports unavailable storage when configuration is absent.
-See [private Blob setup and retention](ASSET_STORAGE.md).
+Keep Node 24.x, the same Vite project root, `vercel.json` routing, and protected
+Preview. The function receives relative `/api/*` and `/uploads/*` requests without
+`listen()` or local storage initialization. Configure server-only Turso write
+credentials separately for Preview and Production. Use a disposable Preview
+database/private store for initial authenticated testing. Review and explicitly
+apply migration 003, then manually bootstrap its first admin before deployment.
+See [current security and manual setup](ADMIN_SECURITY.md) and
+[Private Blob setup](ASSET_STORAGE.md). No deployment was performed by this task.
 
-In Vercel Project Settings:
-
-1. Select Node.js **24.x**, keep the project root at this repository, and use the
-   checked-in Vite configuration/build command.
-2. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` under Environment Variables for
-   **Preview**. Prefer a separate preview database if future preview work will
-   mutate data; the current hosted API is read-only.
-3. Add the corresponding values for **Production** before deploying production.
-   Use a read-only application token while hosted writes remain disabled.
-4. Add them to **Development** only if using Vercel's local-development environment;
-   ordinary `npm run dev` reads the local server process variables.
-5. Enable deployment protection for the preview. Teacher/student preview modes are
-   presentation modes, not authenticated roles. Review results before making any
-   real content public.
-6. Deploy a preview manually after reviewing the working tree. This task does not
-   commit, push or deploy.
-
-Verify the preview with:
+After manual deployment and migration:
 
 ```text
-GET /api/health                 → 200 {"status":"ok","database":"connected"}
-GET /api/taxonomy               → semesters and LEGACY curriculum
-GET /api/curriculum-versions    → existing LEGACY version
-GET /api/questions              → an empty page, total 0
-POST /api/questions             → 403 (hosted writes disabled)
-POST /api/uploads               → 403 (hosted writes disabled)
-GET /uploads/<file>             → 403 (private delivery disabled), or 503 if unconfigured
-GET /api/unknown                → 404 JSON
+GET /api/health             -> 200 safe database status
+GET /api/taxonomy           -> published active/retired curriculum
+GET /api/questions          -> current approved questions only
+POST /api/questions        -> 401 without admin identity
+POST /api/uploads          -> 401 without admin identity
+GET /uploads/<key>         -> approved public assets or admin private assets;
+                              404 for private anonymous reads, 503 if unconfigured
+GET /api/unknown           -> 404 JSON
 ```
 
-Health performs a fresh database query. It never exposes the URL, token, region,
-environment or stack traces. Connection/schema initialization failures return safe
-503 JSON. Client errors are not logged verbatim, because they can contain connection
-details. A local build/routing test cannot certify an undeployed Vercel URL: the
-actual hosted preview must still be checked after manual deployment.
+Login/logout/session use persistent digest-only sessions, finite Secure hosted
+cookies, exact Origin plus custom-header CSRF checks and durable rate limits.
+Students need no login to view approved schemes/hints or print a question set.
+History, candidates, teacher notes, original sources and authoring are admin-only.
+Admin status does not bypass domain or upload validation. Hosted files are limited
+to 3 MiB; local files retain 20 MiB. Managed Blob URLs/credentials remain internal.
 
-## Authentication and uploads
-
-All hosted POST/PUT/PATCH/DELETE mutations are disabled in server middleware. No
-frontend password is used. There is no teacher login, student login or role-based
-read authorization in this stage. Teacher-facing read endpoints and answer exports
-retain their existing behavior; use a private preview and add real server-side roles
-before exposing sensitive materials or enabling writes.
-
-Local upload validation, sandbox CSP, MIME checks and unique names remain intact;
-SVG parsing and content integrity validation are strengthened. Local authoring
-uses `data/uploads`. The hosted function now selects Vercel Private Blob when
-connected, with SDK-managed project OIDC. It never creates filesystem storage.
-Uploads return 403 before multipart/storage operations. Private asset delivery
-returns 403 until authorization is implemented; unconfigured delivery returns 503.
-Opaque `/uploads/` references are retained without exposing raw Blob URLs. No
-PDFs/images were placed in Turso, migrated or deleted. See [asset storage](ASSET_STORAGE.md)
-for the manual private-store connection and remaining authorization/lifecycle gaps.
+Health performs a fresh database query without Blob I/O. It exposes no URL,
+token, environment or stack trace. Missing credentials/current schema produce safe
+503 initialization/health responses. Local checks do not certify live deployment:
+perform the disposable protected Preview smoke documented in the security guide.
 
 ## Transactions and explicit migrations
+
+For the current auth upgrade use only `auth:migrate` and `auth:bootstrap` as
+documented in [admin setup](ADMIN_SECURITY.md). The old migration-002 tool and
+commands below describe historical migration evidence. They are not the 003
+procedure; do not rerun SQLite-to-Turso transfer or the old application command.
 
 `Bank`, curriculum operations, routes and revision helpers await all database work.
 `TursoAdapter` opens a libSQL write transaction and uses `AsyncLocalStorage` to route
@@ -173,6 +151,7 @@ npm run schema:check
 npm run api:check
 npm run api:esm:check
 npm run storage:check
+npm run auth:check
 npm run build
 npm run test:browser
 git diff --check

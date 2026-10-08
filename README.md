@@ -1,12 +1,12 @@
 # Matriculation Physics Question Bank
 
-A teacher workspace with relational Turso/libSQL persistence, server-side search and filters, structured authoring, and reviewed revisions. No authored Physics questions or invented official curriculum are seeded. SQLite remains available for isolated tests and recovery tooling.
+A public approved-question bank with authenticated administrator authoring, relational Turso/libSQL persistence, server-side search and reviewed revisions. Students need no accounts. No authored Physics questions or invented official curriculum are seeded. SQLite remains available for isolated tests and recovery tooling.
 
 ## Run
 
 Requires Node.js 24 or newer.
 
-Set server-side `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [Turso/Vercel setup](docs/TURSO_RUNTIME.md) for safe credential commands and environment configuration. The database must already have migrations 001 and 002; request startup verifies the schema and never runs migrations automatically.
+Set server-side `TURSO_DATABASE_URL` and write-capable `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [admin setup](docs/ADMIN_SECURITY.md) and [Turso/Vercel setup](docs/TURSO_RUNTIME.md). The database must have migrations 001, 002 and 003; startup verifies the schema and never runs migrations. Migration 003 and first-admin bootstrap require separate manual invocation after review; neither was performed in production by this task.
 
 ```powershell
 npm install
@@ -22,11 +22,11 @@ npm run build
 npm start
 ```
 
-The server binds to loopback. This is a trusted local teacher application: Student View is a preview mode, not an authenticated student account. Student responses exclude solutions, teacher notes, answer diagrams, answer PDFs, and original master PDFs. Add server-enforced roles before providing separate student access or hosting on a network.
+The local server binds to loopback. Public users can browse current approved questions, marking schemes and hints, select questions, and use **Print / Save as PDF**. Teacher notes, source PDFs, drafts/reviewing/retired records, revision history and authoring operations require server-side admin authentication. Preview modes remain presentation controls. Use **Admin login** for authoring; there is no registration or default account.
 
 ## Use
 
-1. Prepare a draft curriculum version in **Curriculum**, import your authoritative hierarchy or add its records, verify it and activate it. Existing unversioned taxonomy is labelled LEGACY. See [curriculum administration](docs/curriculum.md).
+1. Sign in as an explicitly bootstrapped administrator. Prepare a draft curriculum version in **Curriculum**, import your authoritative hierarchy or add its records, verify it and activate it. Existing unversioned taxonomy is labelled LEGACY. See [curriculum administration](docs/curriculum.md).
 2. Choose **Add question** or **Import JSON**. Enter the original authored content, difficulty and marks. The app never infers difficulty or repairs marks.
 3. Review Student Preview and Teacher View. Student hints reveal one at a time for the whole question or each part.
 4. Save with a revision note. Initial approval requires explicit confirmation and an answer scheme for each leaf part.
@@ -56,6 +56,7 @@ npm run schema:check
 npm run api:check
 npm run api:esm:check
 npm run storage:check
+npm run auth:check
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -76,6 +77,6 @@ Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank 
 
 See [architecture](docs/architecture.md) for the schema and revision design.
 
-The earlier Vercel audit found frontend HTTP 200 and API HTTP 404. This checkout includes a same-deployment Express function, API routing and `/api/health`. Hosted mutations and uploads remain forbidden until teacher authentication exists. A Vercel Private Blob adapter now provides the durable storage foundation; hosted asset delivery remains forbidden when configured, or unavailable when configuration is absent. Local authoring keeps filesystem uploads. See [private asset storage and setup](docs/ASSET_STORAGE.md), [the storage report](VERCEL_BLOB_STORAGE_REPORT.md), [Turso runtime setup](docs/TURSO_RUNTIME.md), and [the runtime migration report](TURSO_RUNTIME_MIGRATION_REPORT.md). No deployment was performed; the original production findings remain historical evidence.
+This checkout includes the same-deployment Express API, native ESM checks, persistent admin sessions, durable abuse controls and resource-authorized Private Blob delivery. Anonymous authoring returns 401; administrators can upload validated files after login. Current approved diagrams/schemes are served publicly through the application; private authoring assets require admin identity. Hosted files are capped at 3 MiB; local uploads remain filesystem-based. See [security setup](docs/ADMIN_SECURITY.md), [security verification](ADMIN_DATABASE_SECURITY_REPORT.md), [asset storage](docs/ASSET_STORAGE.md) and [Turso runtime setup](docs/TURSO_RUNTIME.md). No deployment or production change was performed; earlier audit/storage/migration reports remain historical evidence.
 
 See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.

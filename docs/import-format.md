@@ -48,7 +48,7 @@ In `equationLatex`, store raw LaTeX without `$` delimiters. JSON requires double
 
 Upload files using the editor before referencing local `/uploads/<unique-file>` URLs in JSON. Supported kinds: `illustration`, `physics_diagram`, `fbd`, `graph`, `vector_diagram`, `circuit_diagram`, `answer_diagram`, `reference_image`, `original_pdf`, `question_pdf`, `answer_pdf`. PDF kinds require `application/pdf`; all other kinds require an image MIME type. Provide descriptive alternative text. File bytes are separate from JSON and must be preserved with backups.
 
-New managed files use opaque `/uploads/<UUID>-<SHA256>.<extension>` references for both local files and hosted private Blob objects. Raw Blob URLs are rejected; do not export storage credentials or signed delivery URLs. Legacy local links remain compatible. Hosted upload/delivery stays disabled until server-side authorization exists. Other valid external HTTPS references remain author-managed. See [private asset storage](ASSET_STORAGE.md) for validation, staged-upload retention and setup.
+New managed files use opaque `/uploads/<UUID>-<SHA256>.<extension>` references for both local files and hosted private Blob objects. Raw Blob URLs are rejected; do not export storage credentials or signed delivery URLs. Legacy local links remain compatible. Uploads/imports require admin identity. Approved current non-source assets are public through resource-authorized delivery; source/private assets require admin identity. Other valid external HTTPS references remain author-managed. See [private asset storage](ASSET_STORAGE.md) and [admin security](ADMIN_SECURITY.md) for limits, staging and setup.
 
 ## Review
 

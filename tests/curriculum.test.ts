@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Bank } from '../server/database.js';
 import { createApp } from '../server/app.js';
+import { seedAdminSession, authenticatedFetch } from './auth-fixture.js';
 import { LocalAssetStorage } from '../server/local-asset-storage.js';
 import { setup } from './fixtures.js';
 import type { CurriculumDocument, EditableKind } from '../shared/curriculum.js';
@@ -543,7 +544,7 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
       await upgraded.close();
     }
     const reopened = await createTestBank(path);
-    assert.equal((await reopened.all('SELECT * FROM schema_migrations')).length, 2);
+    assert.equal((await reopened.all('SELECT * FROM schema_migrations')).length, 3);
     await reopened.close();
   } finally {
     await source.close();
@@ -559,6 +560,7 @@ test('HTTP curriculum APIs guard deletion, apply reviewed imports and roundtrip 
   const address = server.address();
   assert.ok(address && typeof address === 'object');
   const base = `http://127.0.0.1:${address.port}/api`;
+  const fetch = authenticatedFetch(await seedAdminSession(bank));
   const body = (method: string, value: unknown) => ({
     method,
     headers: { 'Content-Type': 'application/json' },

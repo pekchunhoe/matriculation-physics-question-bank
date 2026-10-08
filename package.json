@@ -20,7 +20,11 @@
     "schema:check": "tsx scripts/export-schema.ts --check",
     "api:check": "tsx scripts/check-vercel-api.ts",
     "api:esm:check": "tsx scripts/check-api-esm.ts",
-    "storage:check": "tsx --test tests/storage.test.ts"
+    "storage:check": "tsx --test tests/storage.test.ts",
+    "auth:check": "tsx --test tests/auth.test.ts",
+    "auth:migrate": "tsx scripts/auth-admin.ts migrate",
+    "auth:bootstrap": "tsx scripts/auth-admin.ts bootstrap",
+    "auth:revoke": "tsx scripts/auth-admin.ts revoke"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

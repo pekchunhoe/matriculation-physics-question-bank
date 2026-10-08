@@ -13,30 +13,32 @@ import { compareDocuments, PdfRevisionImportService } from './revisions.js';
 import { warnings } from '../shared/schema.js';
 import { editableKinds } from './curriculum.js';
 import { classificationSchema, type EditableKind } from '../shared/curriculum.js';
+import { AuthService, type AdminIdentity } from './auth.js';
+import { VisibilityService } from './visibility.js';
 
 export function createApp(
   bank: Bank,
   storage: AssetStorage | undefined,
-  options: { allowWrites?: boolean } = {},
+  options: { hosted?: boolean } = {},
 ) {
   const app = express();
   const assets = storage ? new AssetService(storage, bank) : undefined;
+  const auth = new AuthService(bank, options.hosted ?? false);
+  const visibility = new VisibilityService(bank);
+  const identities = new WeakMap<express.Request, AdminIdentity>();
+  const admin: express.RequestHandler = async (req, _res, next) => {
+    if (!identities.has(req)) identities.set(req, await auth.requireAdmin(req));
+    next();
+  };
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers.origin) {
-      let host = '';
-      try {
-        host = new URL(req.headers.origin).host;
-      } catch {
-        /* Opaque origins are not allowed to write. */
-      }
-      if (host !== req.headers.host)
-        return res.status(403).json({ error: 'Cross-origin writes are not permitted' });
-    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    if (auth.hosted) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     next();
   });
-  app.use(express.json({ limit: '5mb' }));
   app.get('/api/health', async (_req, res) => {
     try {
       await bank.one('SELECT 1 AS connected');
@@ -46,26 +48,59 @@ export function createApp(
     }
   });
   app.use('/api', (req, res, next) => {
-    const allowWrites = options.allowWrites ?? bank.db.kind === 'sqlite';
-    if (!allowWrites && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))
-      return res
-        .status(403)
-        .json({ error: 'Hosted writes are disabled until teacher authentication is configured' });
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+      !['/auth/login', '/auth/logout'].includes(req.path)
+    )
+      return admin(req, res, () => {
+        auth.csrf(req);
+        next();
+      });
     next();
+  });
+  app.post(
+    '/api/auth/login',
+    (req, _res, next) => {
+      auth.csrf(req);
+      next();
+    },
+    express.json({ limit: '4kb' }),
+    async (req, res) => res.json(await auth.login(req, res)),
+  );
+  app.post('/api/auth/logout', async (req, res) => {
+    await auth.logout(req, res);
+    res.json({ authenticated: false });
+  });
+  app.get('/api/auth/session', async (req, res) => {
+    const user = await auth.identity(req);
+    res.json(user ? { authenticated: true, user } : { authenticated: false });
+  });
+  app.use(express.json({ limit: auth.hosted ? '3mb' : '5mb' }));
+  app.use('/api', async (req, _res, next) => {
+    if (!identities.has(req)) {
+      const identity = await auth.identity(req);
+      if (identity) identities.set(req, identity);
+    }
+    next();
+  });
+  app.get('/api/public/question-set', async (req, res) => {
+    await auth.limit('public-print-ip', auth.clientAddress(req), 20, 60_000);
+    await auth.limit('public-print-global', 'all', 500, 60_000);
+    res.json(await visibility.questionSet(req.query.ids, req.query.answers, req.query.hints));
   });
   app.use('/uploads', async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     if (!storage) return res.status(503).json({ error: 'Asset storage is not configured' });
-    if (storage.kind !== 'local')
-      return res
-        .status(403)
-        .json({ error: 'Private asset delivery requires teacher authorization' });
     if (!['GET', 'HEAD'].includes(req.method))
       return res.status(405).json({ error: 'Asset delivery accepts read requests only' });
     const key = assetKeyFromReference('/uploads' + req.path);
     if (!key) throw new AssetStorageError('Invalid asset reference', 400, 'invalid_key');
+    if (!(await auth.identity(req)) && !(await visibility.publicAsset('/uploads/' + key)))
+      throw new BankError('Asset not found', 404);
     const result = await storage.get(key);
     if (!result) return res.status(404).json({ error: 'Asset not found' });
+    if (auth.hosted && result.bytes.length > 3 * 1024 * 1024)
+      throw new BankError('Asset exceeds the hosted delivery limit', 413);
     res.setHeader(
       'Content-Security-Policy',
       "sandbox; default-src 'none'; style-src 'unsafe-inline'",
@@ -102,14 +137,18 @@ export function createApp(
       throw new AssetStorageError('Asset storage is not configured');
     await assets?.checkDocument(doc);
   };
-  app.get('/api/taxonomy', async (_req, res) => res.json(await bank.taxonomy()));
+  app.get('/api/taxonomy', async (req, res) =>
+    res.json(identities.has(req) ? await bank.taxonomy() : await visibility.taxonomy()),
+  );
   const editable = (kind: string): EditableKind => {
     if (!editableKinds.includes(kind as EditableKind))
       throw new BankError('This taxonomy type is not editable');
     return kind as EditableKind;
   };
-  app.get('/api/taxonomy/:kind/:id/impact', async (req, res) =>
-    res.json(await bank.curriculum.impact(editable(req.params.kind), String(req.params.id))),
+  app.get('/api/taxonomy/:kind/:id/impact', admin, async (req, res) =>
+    res.json(
+      await bank.curriculum.impact(editable(String(req.params.kind)), String(req.params.id)),
+    ),
   );
   app.patch('/api/taxonomy/:kind/:id', async (req, res) =>
     res.json(
@@ -123,8 +162,12 @@ export function createApp(
       409,
     );
   });
-  app.get('/api/curriculum-versions', async (_req, res) =>
-    res.json(await bank.curriculum.versions()),
+  app.get('/api/curriculum-versions', async (req, res) =>
+    res.json(
+      identities.has(req)
+        ? await bank.curriculum.versions()
+        : (await visibility.taxonomy()).curriculumVersions,
+    ),
   );
   app.post('/api/curriculum-versions', async (req, res) =>
     res
@@ -137,7 +180,7 @@ export function createApp(
         ),
       ),
   );
-  app.get('/api/curriculum-versions/:id/impact', async (req, res) =>
+  app.get('/api/curriculum-versions/:id/impact', admin, async (req, res) =>
     res.json(await bank.curriculum.impact('curriculumVersions', String(req.params.id))),
   );
   app.patch('/api/curriculum-versions/:id', async (req, res) =>
@@ -146,7 +189,7 @@ export function createApp(
   app.delete('/api/curriculum-versions/:id', () => {
     throw new BankError('Retire curriculum versions instead of deleting their history.', 409);
   });
-  app.get('/api/curriculum-versions/:id/export', async (req, res) => {
+  app.get('/api/curriculum-versions/:id/export', admin, async (req, res) => {
     const doc = await bank.curriculum.export(String(req.params.id));
     res.setHeader(
       'Content-Disposition',
@@ -189,7 +232,10 @@ export function createApp(
   });
   app.get('/api/counts', async (req, res) =>
     res.json(
-      await bank.counts(typeof req.query.course === 'string' ? req.query.course : undefined),
+      await bank.counts(
+        typeof req.query.course === 'string' ? req.query.course : undefined,
+        !identities.has(req),
+      ),
     ),
   );
   app.get('/api/questions', async (req, res) => {
@@ -198,7 +244,7 @@ export function createApp(
       if (typeof value !== 'string') throw new BankError('Query parameters must be single strings');
       filters[key] = value;
     }
-    res.json(await bank.list(filters));
+    res.json(identities.has(req) ? await bank.list(filters) : await visibility.list(filters));
   });
   app.post('/api/questions', async (req, res) => {
     const doc = await bank.validate(req.body.document);
@@ -250,6 +296,11 @@ export function createApp(
       version = req.query.version ? Number(req.query.version) : undefined;
     if (version !== undefined && (!Number.isInteger(version) || version < 1))
       throw new BankError('Invalid version');
+    if (!identities.has(req)) {
+      if (version !== undefined) throw new BankError('Administrator authentication required', 401);
+      const loaded = await visibility.approved(id);
+      return res.json({ id, ...loaded, warnings: [] });
+    }
     const doc = await bank.document(id, version),
       student = req.query.view === 'student';
     res.json({
@@ -282,7 +333,7 @@ export function createApp(
       ),
     );
   });
-  app.get('/api/questions/:id/export', async (req, res) => {
+  app.get('/api/questions/:id/export', admin, async (req, res) => {
     const version = req.query.version === undefined ? undefined : Number(req.query.version);
     if (version !== undefined && (!Number.isInteger(version) || version < 1))
       throw new BankError('Invalid version');
@@ -302,10 +353,10 @@ export function createApp(
         : doc,
     );
   });
-  app.get('/api/questions/:id/versions', async (req, res) =>
+  app.get('/api/questions/:id/versions', admin, async (req, res) =>
     res.json(await bank.versions(String(req.params.id))),
   );
-  app.get('/api/questions/:id/revisions', async (req, res) => {
+  app.get('/api/questions/:id/revisions', admin, async (req, res) => {
     const id = String(req.params.id);
     const document = await bank.document(id);
     res.json(
@@ -333,12 +384,19 @@ export function createApp(
   );
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxAssetBytes, files: 1 },
+    limits: {
+      fileSize: auth.hosted ? 3 * 1024 * 1024 : maxAssetBytes,
+      files: 1,
+      fields: 0,
+      parts: 1,
+    },
   });
   app.post(
     '/api/uploads',
     (req, _res, next) => {
       if (!assets) throw new AssetStorageError('Asset storage is not configured');
+      if (auth.hosted && Number(req.headers['content-length'] ?? 0) > 3.5 * 1024 * 1024)
+        throw new BankError('Hosted upload request is too large', 413);
       next();
     },
     upload.single('file'),
@@ -365,7 +423,9 @@ export function createApp(
         error instanceof BankError || error instanceof AssetStorageError
           ? error.status
           : error instanceof multer.MulterError
-            ? 400
+            ? error.code === 'LIMIT_FILE_SIZE'
+              ? 413
+              : 400
             : 'type' in error && error.type === 'entity.parse.failed'
               ? 400
               : 'type' in error && error.type === 'entity.too.large'
