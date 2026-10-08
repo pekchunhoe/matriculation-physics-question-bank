@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import katex from 'katex';
-import { assetKinds } from './model';
-export { assetKinds, warnings } from './model';
+import { assetKinds } from './model.js';
+export { assetKinds, warnings } from './model.js';
 
 const text = z.string().max(30000);
 const id = z.string().min(1).max(120);

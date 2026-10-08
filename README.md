@@ -54,6 +54,7 @@ npm test
 npm run db:check
 npm run schema:check
 npm run api:check
+npm run api:esm:check
 npm run build
 npx playwright install chromium
 npm run test:browser
@@ -61,6 +62,8 @@ git diff --check
 ```
 
 Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank with clearly labelled TEST ONLY content on port 3100; they do not modify the real bank on port 3000. Browser results and screenshots are saved under ignored `test-results/` and `playwright-report/`.
+
+`api:check` includes `api:esm:check`: it typechecks the complete API graph with NodeNext, audits unbundled emitted imports, and imports the compiled function with ordinary Node and no Turso credentials. Shared modules use explicit `.js` relative specifiers, which TypeScript and Vite resolve to their `.ts` sources. This catches native ESM resolution errors that bundling and `tsx` can hide.
 
 ## Boundaries
 

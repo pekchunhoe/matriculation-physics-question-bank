@@ -165,6 +165,7 @@ npm test
 npm run db:check
 npm run schema:check
 npm run api:check
+npm run api:esm:check
 npm run build
 npm run test:browser
 git diff --check
@@ -176,6 +177,15 @@ transport. Browser fixtures remain isolated. The separately invoked
 `physics-bank-runtime-smoke-*` scratch URL. Its disposable draft/CRUD/FTS/rollback
 test is followed by deletion of only the newly created scratch database. The
 production target is re-audited afterward to confirm no smoke fixtures leaked.
+
+The API also has a native ESM regression check. `tsconfig.api.json` uses NodeNext
+for the complete API dependency graph while the frontend keeps Bundler resolution.
+`api:esm:check` compiles unbundled JavaScript into an isolated temporary directory,
+audits import/re-export/dynamic-import targets, and imports the real emitted API
+with ordinary Node. It removes Turso credentials and Node loader options from the
+child environment and verifies a safe credential-free health response. A negative
+check reproduces the extensionless-import crash using temporary emitted output.
+`api:check` includes this verification; no database connection or migration runs.
 
 Sources: [official libSQL client reference](https://docs.turso.tech/sdk/ts/reference),
 [transaction semantics](https://tursodatabase.github.io/libsql-client-ts/interfaces/Transaction.html),

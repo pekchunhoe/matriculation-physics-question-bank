@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
+import './check-api-esm.js';
 
 const result = await build({
   entryPoints: ['api/index.ts'],

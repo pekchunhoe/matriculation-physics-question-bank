@@ -18,7 +18,8 @@
     "db:check": "tsx scripts/check-db.ts",
     "schema:generate": "tsx scripts/export-schema.ts",
     "schema:check": "tsx scripts/export-schema.ts --check",
-    "api:check": "tsx scripts/check-vercel-api.ts"
+    "api:check": "tsx scripts/check-vercel-api.ts",
+    "api:esm:check": "tsx scripts/check-api-esm.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

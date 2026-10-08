@@ -1,4 +1,4 @@
-import type { QuestionDocument } from './schema';
+import type { QuestionDocument } from './schema.js';
 export const assetKinds = [
   'illustration',
   'physics_diagram',
