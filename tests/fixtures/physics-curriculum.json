@@ -1,0 +1,957 @@
+{
+  "schemaVersion": 1,
+  "course": {
+    "id": "matriculation-physics",
+    "slug": "matriculation-physics",
+    "name": "Matriculation Physics"
+  },
+  "curriculumVersion": {
+    "id": "curriculum-physics-2022-2023",
+    "code": "PHYSICS-2022-2023",
+    "name": "Matriculation Physics - Session 2022/2023",
+    "effectiveFrom": null,
+    "effectiveTo": null,
+    "status": "draft",
+    "order": 1
+  },
+  "semesters": [
+    {
+      "id": "semester-physics-2022-2023-1",
+      "slug": "physics-2022-2023-semester-1",
+      "name": "Semester 1",
+      "order": 1,
+      "status": "active",
+      "isTest": false,
+      "chapters": [
+        {
+          "id": "chapter-sp015-2022-2023-1",
+          "slug": "1-0-physical-quantities-and-measurements",
+          "name": "1.0 Physical Quantities and Measurements",
+          "order": 1,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-1-1",
+              "slug": "1-1-dimensions-of-physical-quantities",
+              "name": "1.1 Dimensions of physical quantities",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-1-2",
+              "slug": "1-2-scalars-and-vectors",
+              "name": "1.2 Scalars and vectors",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-1-3",
+              "slug": "1-3-significant-figures-and-uncertainties-analysis",
+              "name": "1.3 Significant figures and uncertainties analysis",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-2",
+          "slug": "2-0-kinematics-of-linear-motion",
+          "name": "2.0 Kinematics of Linear Motion",
+          "order": 2,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-2-1",
+              "slug": "2-1-linear-motion",
+              "name": "2.1 Linear motion",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-2-2",
+              "slug": "2-2-uniformly-accelerated-motion",
+              "name": "2.2 Uniformly accelerated motion",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-2-3",
+              "slug": "2-3-projectile-motion",
+              "name": "2.3 Projectile motion",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-3",
+          "slug": "3-0-dynamics-of-linear-motion",
+          "name": "3.0 Dynamics of Linear Motion",
+          "order": 3,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-3-1",
+              "slug": "3-1-momentum-and-impulse",
+              "name": "3.1 Momentum and impulse",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-3-2",
+              "slug": "3-2-conservation-of-linear-momentum",
+              "name": "3.2 Conservation of linear momentum",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-3-3",
+              "slug": "3-3-basic-of-forces-and-free-body-diagram",
+              "name": "3.3 Basic of forces and free body diagram",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-3-4",
+              "slug": "3-4-newton-s-laws-of-motion",
+              "name": "3.4 Newton’s Laws of Motion",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-4",
+          "slug": "4-0-work-energy-and-power",
+          "name": "4.0 Work, Energy and Power",
+          "order": 4,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-4-1",
+              "slug": "4-1-work",
+              "name": "4.1 Work",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-4-2",
+              "slug": "4-2-energy-and-conservation-of-energy",
+              "name": "4.2 Energy and Conservation of Energy",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-4-3",
+              "slug": "4-3-power",
+              "name": "4.3 Power",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-5",
+          "slug": "5-0-circular-motion",
+          "name": "5.0 Circular Motion",
+          "order": 5,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-5-1",
+              "slug": "5-1-parameters-in-circular-motion",
+              "name": "5.1 Parameters in circular motion",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-5-2",
+              "slug": "5-2-uniform-circular-motion",
+              "name": "5.2 Uniform circular motion",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-5-3",
+              "slug": "5-3-centripetal-force",
+              "name": "5.3 Centripetal force",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-6",
+          "slug": "6-0-rotation-of-rigid-body",
+          "name": "6.0 Rotation of Rigid Body",
+          "order": 6,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-6-1",
+              "slug": "6-1-rotational-kinematics",
+              "name": "6.1 Rotational kinematics",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-6-2",
+              "slug": "6-2-equilibrium-of-a-uniform-rigid-body",
+              "name": "6.2 Equilibrium of a uniform rigid body",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-6-3",
+              "slug": "6-3-rotational-dynamics",
+              "name": "6.3 Rotational dynamics",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-6-4",
+              "slug": "6-4-conservation-of-angular-momentum",
+              "name": "6.4 Conservation of angular momentum",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-7",
+          "slug": "7-0-simple-harmonic-motion-and-waves",
+          "name": "7.0 Simple Harmonic Motion and Waves",
+          "order": 7,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-7-1",
+              "slug": "7-1-kinematics-of-simple-harmonic-motion",
+              "name": "7.1 Kinematics of simple harmonic motion",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-2",
+              "slug": "7-2-graphs-of-simple-harmonic-motion",
+              "name": "7.2 Graphs of simple harmonic motion",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-3",
+              "slug": "7-3-period-of-simple-harmonic-motion",
+              "name": "7.3 Period of simple harmonic motion",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-4",
+              "slug": "7-4-properties-of-waves",
+              "name": "7.4 Properties of waves",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-5",
+              "slug": "7-5-superposition-of-waves",
+              "name": "7.5 Superposition of waves",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-6",
+              "slug": "7-6-application-of-standing-waves",
+              "name": "7.6 Application of standing waves",
+              "order": 6,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-7-7",
+              "slug": "7-7-doppler-effect",
+              "name": "7.7 Doppler Effect",
+              "order": 7,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-8",
+          "slug": "8-0-physics-of-matters",
+          "name": "8.0 Physics of Matters",
+          "order": 8,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-8-1",
+              "slug": "8-1-stress-and-strain",
+              "name": "8.1 Stress and strain",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-8-2",
+              "slug": "8-2-young-s-modulus",
+              "name": "8.2 Young’s Modulus",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-8-3",
+              "slug": "8-3-heat-conduction",
+              "name": "8.3 Heat conduction",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-8-4",
+              "slug": "8-4-thermal-expansion",
+              "name": "8.4 Thermal expansion",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp015-2022-2023-9",
+          "slug": "9-0-kinetic-theory-of-gases-and-thermodynamics",
+          "name": "9.0 Kinetic Theory of Gases and Thermodynamics",
+          "order": 9,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp015-2022-2023-9-1",
+              "slug": "9-1-kinetic-theory-of-gases",
+              "name": "9.1 Kinetic theory of gases",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-9-2",
+              "slug": "9-2-molecular-kinetic-energy-and-internal-energy",
+              "name": "9.2 Molecular kinetic energy and internal energy",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-9-3",
+              "slug": "9-3-first-law-of-thermodynamics",
+              "name": "9.3 First Law of Thermodynamics",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-9-4",
+              "slug": "9-4-thermodynamic-processes",
+              "name": "9.4 Thermodynamic Processes",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp015-2022-2023-9-5",
+              "slug": "9-5-thermodynamic-work",
+              "name": "9.5 Thermodynamic Work",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "semester-physics-2022-2023-2",
+      "slug": "physics-2022-2023-semester-2",
+      "name": "Semester 2",
+      "order": 2,
+      "status": "active",
+      "isTest": false,
+      "chapters": [
+        {
+          "id": "chapter-sp025-2022-2023-1",
+          "slug": "1-0-electrostatics",
+          "name": "1.0 Electrostatics",
+          "order": 1,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-1-1",
+              "slug": "1-1-coulomb-s-law",
+              "name": "1.1 Coulomb’s Law",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-1-2",
+              "slug": "1-2-electric-field",
+              "name": "1.2 Electric field",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-1-3",
+              "slug": "1-3-electric-potential",
+              "name": "1.3 Electric potential",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-1-4",
+              "slug": "1-4-charge-in-a-uniform-electric-field",
+              "name": "1.4 Charge in a uniform electric field",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-2",
+          "slug": "2-0-capacitors-and-dielectrics",
+          "name": "2.0 Capacitors and Dielectrics",
+          "order": 2,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-2-1",
+              "slug": "2-1-capacitance-and-capacitors-in-series-and-parallel",
+              "name": "2.1 Capacitance and capacitors in series and parallel",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-2-2",
+              "slug": "2-2-charging-and-discharging-capacitors",
+              "name": "2.2 Charging and discharging capacitors",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-2-3",
+              "slug": "2-3-capacitors-with-dielectrics",
+              "name": "2.3 Capacitors with dielectrics",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-3",
+          "slug": "3-0-electric-current-and-direct-current-circuits",
+          "name": "3.0 Electric Current And Direct-Current Circuits",
+          "order": 3,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-3-1",
+              "slug": "3-1-electrical-current",
+              "name": "3.1 Electrical current",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-2",
+              "slug": "3-2-ohm-s-law-and-resistivity",
+              "name": "3.2 Ohm’s Law and resistivity",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-3",
+              "slug": "3-3-variation-of-resistance-with-temperature",
+              "name": "3.3 Variation of resistance with temperature",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-4",
+              "slug": "3-4-electromotive-force-emf-internal-resistance-and-potential-difference",
+              "name": "3.4 Electromotive force (emf), internal resistance and potential difference",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-5",
+              "slug": "3-5-resistors-in-series-and-parallel",
+              "name": "3.5 Resistors in series and parallel",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-6",
+              "slug": "3-6-kirchhoff-s-rules",
+              "name": "3.6 Kirchhoff’s Rules",
+              "order": 6,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-7",
+              "slug": "3-7-electrical-energy-and-power",
+              "name": "3.7 Electrical energy and power",
+              "order": 7,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-8",
+              "slug": "3-8-potential-divider",
+              "name": "3.8 Potential divider",
+              "order": 8,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-3-9",
+              "slug": "3-9-potentiometer",
+              "name": "3.9 Potentiometer",
+              "order": 9,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-4",
+          "slug": "4-0-magnetism",
+          "name": "4.0 Magnetism",
+          "order": 4,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-4-1",
+              "slug": "4-1-magnetic-field",
+              "name": "4.1 Magnetic field",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-4-2",
+              "slug": "4-2-resultant-magnetic-field-produced-by-current-carrying-conductor",
+              "name": "4.2 Resultant magnetic field produced by current-carrying conductor",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-4-3",
+              "slug": "4-3-force-on-a-moving-charged-particle-in-a-uniform-magnetic-field",
+              "name": "4.3 Force on a moving charged particle in a uniform magnetic field",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-4-4",
+              "slug": "4-4-force-on-a-current-carrying-conductor-in-a-uniform-magnetic-field",
+              "name": "4.4 Force on a current carrying conductor in a uniform magnetic field",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-4-5",
+              "slug": "4-5-forces-between-two-parallel-current-carrying-conductors",
+              "name": "4.5 Forces between two parallel current-carrying conductors",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-4-6",
+              "slug": "4-6-application-of-motion-of-charged-particle",
+              "name": "4.6 Application of motion of charged particle",
+              "order": 6,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-5",
+          "slug": "5-0-electromagnetic-induction",
+          "name": "5.0 Electromagnetic Induction",
+          "order": 5,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-5-1",
+              "slug": "5-1-magnetic-flux",
+              "name": "5.1 Magnetic flux",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-5-2",
+              "slug": "5-2-induced-emf",
+              "name": "5.2 Induced emf",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-5-3",
+              "slug": "5-3-self-inductance",
+              "name": "5.3 Self-inductance",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-5-4",
+              "slug": "5-4-energy-stored-in-inductor",
+              "name": "5.4 Energy stored in inductor",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-5-5",
+              "slug": "5-5-mutual-inductance",
+              "name": "5.5 Mutual inductance",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-6",
+          "slug": "6-0-alternating-current",
+          "name": "6.0 Alternating Current",
+          "order": 6,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-6-1",
+              "slug": "6-1-alternating-current",
+              "name": "6.1 Alternating current",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-6-2",
+              "slug": "6-2-root-mean-square-rms",
+              "name": "6.2 Root mean square (rms)",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-6-3",
+              "slug": "6-3-resistance-reactance-and-impedance",
+              "name": "6.3 Resistance, reactance and impedance",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-6-4",
+              "slug": "6-4-power-and-power-factor",
+              "name": "6.4 Power and power factor",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-7",
+          "slug": "7-0-optics",
+          "name": "7.0 Optics",
+          "order": 7,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-7-1",
+              "slug": "7-1-reflection-at-a-spherical-surface",
+              "name": "7.1 Reflection at a spherical surface",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-2",
+              "slug": "7-2-refraction-at-a-spherical-surface",
+              "name": "7.2 Refraction at a spherical surface",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-3",
+              "slug": "7-3-thin-lenses",
+              "name": "7.3 Thin lenses",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-4",
+              "slug": "7-4-huygen-s-principle",
+              "name": "7.4 Huygens' Principle",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-5",
+              "slug": "7-5-constructive-and-destructive-interferences",
+              "name": "7.5 Constructive and destructive interferences",
+              "order": 5,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-6",
+              "slug": "7-6-interference-of-transmitted-light-through-double-slits",
+              "name": "7.6 Interference of transmitted light through double-slits",
+              "order": 6,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-7",
+              "slug": "7-7-interference-of-reflected-light-in-thin-films",
+              "name": "7.7 Interference of reflected light in thin films",
+              "order": 7,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-8",
+              "slug": "7-8-diffraction-by-a-single-slit",
+              "name": "7.8 Diffraction by a single slit",
+              "order": 8,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-7-9",
+              "slug": "7-9-diffraction-grating",
+              "name": "7.9 Diffraction grating",
+              "order": 9,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-8",
+          "slug": "8-0-wave-properties-of-particle",
+          "name": "8.0 Wave Properties of Particle",
+          "order": 8,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-8-1",
+              "slug": "8-1-de-broglie-wavelength",
+              "name": "8.1 de Broglie wavelength",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-8-2",
+              "slug": "8-2-electron-diffraction",
+              "name": "8.2 Electron diffraction",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        },
+        {
+          "id": "chapter-sp025-2022-2023-9",
+          "slug": "9-0-nuclear-and-particle-physics",
+          "name": "9.0 Nuclear and Particle Physics",
+          "order": 9,
+          "status": "active",
+          "isTest": false,
+          "topics": [
+            {
+              "id": "topic-sp025-2022-2023-9-1",
+              "slug": "9-1-binding-energy-and-mass-defect",
+              "name": "9.1 Binding energy and mass defect",
+              "order": 1,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-9-2",
+              "slug": "9-2-radioactivity",
+              "name": "9.2 Radioactivity",
+              "order": 2,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-9-3",
+              "slug": "9-3-particle-accelerator",
+              "name": "9.3 Particle accelerator",
+              "order": 3,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            },
+            {
+              "id": "topic-sp025-2022-2023-9-4",
+              "slug": "9-4-fundamental-particle",
+              "name": "9.4 Fundamental particle",
+              "order": 4,
+              "status": "active",
+              "isTest": false,
+              "subtopics": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

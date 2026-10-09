@@ -3,6 +3,7 @@ import type { Taxonomy } from '../shared/schema';
 import { api } from './api';
 import { Field } from './components';
 import { useAuth } from './Auth';
+import { inStoredOrder } from './taxonomy-order';
 type Card = {
   id: string;
   question_code: string;
@@ -101,23 +102,29 @@ export function Browser({ tax }: { tax: Taxonomy }) {
         ? !filters.curriculum || v.status === 'active'
         : v.id === filters.curriculum),
   );
-  const semesters = tax.semesters.filter(
-      (s) =>
-        (!filters.course || s.parentId === filters.course) &&
-        visible(s.status) &&
-        (!tax.curriculumVersions || versions.some((v) => v.id === s.curriculumVersionId)),
+  const semesters = inStoredOrder(
+      tax.semesters.filter(
+        (s) =>
+          (!filters.course || s.parentId === filters.course) &&
+          visible(s.status) &&
+          (!tax.curriculumVersions || versions.some((v) => v.id === s.curriculumVersionId)),
+      ),
     ),
-    chapters = tax.chapters.filter(
-      (c) =>
-        visible(c.status) &&
-        (!filters.semester || c.parentId === filters.semester) &&
-        semesters.some((s) => s.id === c.parentId),
+    chapters = inStoredOrder(
+      tax.chapters.filter(
+        (c) =>
+          visible(c.status) &&
+          (!filters.semester || c.parentId === filters.semester) &&
+          semesters.some((s) => s.id === c.parentId),
+      ),
     ),
-    topics = tax.topics.filter(
-      (t) =>
-        visible(t.status) &&
-        (!filters.chapter || t.parentId === filters.chapter) &&
-        chapters.some((c) => c.id === t.parentId),
+    topics = inStoredOrder(
+      tax.topics.filter(
+        (t) =>
+          visible(t.status) &&
+          (!filters.chapter || t.parentId === filters.chapter) &&
+          chapters.some((c) => c.id === t.parentId),
+      ),
     ),
     subtopics = tax.subtopics.filter(
       (t) =>
@@ -253,23 +260,60 @@ export function Browser({ tax }: { tax: Taxonomy }) {
           {select('Semester', 'semester', semesters)}
           <fieldset className="topic-options">
             <legend>Topic</legend>
-            {!topics.length && <p className="muted">No topics yet. Add the supplied curriculum.</p>}
-            {topics.map((t) => (
-              <label key={t.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={filters.topic?.split(',').includes(t.id) ?? false}
-                  onChange={(e) => {
-                    const values = new Set(filters.topic?.split(',').filter(Boolean));
-                    if (e.target.checked) values.add(t.id);
-                    else values.delete(t.id);
-                    update('topic', [...values].join(','));
-                  }}
-                />
-                {t.name}
-                {t.isTest && <small>Test</small>}
-              </label>
-            ))}
+            {!topics.length && <p className="muted">No topics available for these filters.</p>}
+            {semesters
+              .filter((semester) =>
+                chapters.some(
+                  (chapter) =>
+                    chapter.parentId === semester.id &&
+                    topics.some((topic) => topic.parentId === chapter.id),
+                ),
+              )
+              .map((semester) => (
+                <fieldset className="topic-semester" key={semester.id}>
+                  <legend>
+                    {semester.name}
+                    {new Set(semesters.map((s) => s.curriculumVersionId)).size > 1 && (
+                      <span className="muted">
+                        {' '}
+                        {
+                          tax.curriculumVersions?.find((v) => v.id === semester.curriculumVersionId)
+                            ?.name
+                        }
+                      </span>
+                    )}
+                  </legend>
+                  {chapters
+                    .filter(
+                      (chapter) =>
+                        chapter.parentId === semester.id &&
+                        topics.some((topic) => topic.parentId === chapter.id),
+                    )
+                    .map((chapter) => (
+                      <fieldset className="topic-chapter" key={chapter.id}>
+                        <legend>{chapter.name}</legend>
+                        {topics
+                          .filter((t) => t.parentId === chapter.id)
+                          .map((t) => (
+                            <label key={t.id} className="check">
+                              <input
+                                type="checkbox"
+                                checked={filters.topic?.split(',').includes(t.id) ?? false}
+                                onChange={(e) => {
+                                  const values = new Set(filters.topic?.split(',').filter(Boolean));
+                                  if (e.target.checked) values.add(t.id);
+                                  else values.delete(t.id);
+                                  update('topic', [...values].join(','));
+                                }}
+                              />
+                              {t.name}
+                              {t.isTest && <small>Test</small>}
+                            </label>
+                          ))}
+                      </fieldset>
+                    ))}
+                </fieldset>
+              ))}
           </fieldset>
           {select('Difficulty', 'difficulty', tax.difficulties)}
           <details>
@@ -356,25 +400,24 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                     {c.name}
                     {c.isTest ? ' (test taxonomy)' : ''} · {count('chapter_id', c.id)}
                   </button>
-                  {tax.topics
-                    .filter((t) => t.parentId === c.id && visible(t.status))
-                    .map((t) => (
-                      <button
-                        className={
-                          'topic-row ' +
-                          (filters.topic?.split(',').includes(t.id) ? 'selected' : '')
-                        }
-                        key={t.id}
-                        onClick={() => update('topic', t.id)}
-                      >
-                        <span>{t.name}</span>
-                        <small>
-                          {tax.difficulties
-                            .map((d) => `${d.name}: ${count('topic_id', t.id, d.id)}`)
-                            .join(' · ')}
-                        </small>
-                      </button>
-                    ))}
+                  {inStoredOrder(
+                    tax.topics.filter((t) => t.parentId === c.id && visible(t.status)),
+                  ).map((t) => (
+                    <button
+                      className={
+                        'topic-row ' + (filters.topic?.split(',').includes(t.id) ? 'selected' : '')
+                      }
+                      key={t.id}
+                      onClick={() => update('topic', t.id)}
+                    >
+                      <span>{t.name}</span>
+                      <small>
+                        {tax.difficulties
+                          .map((d) => `${d.name}: ${count('topic_id', t.id, d.id)}`)
+                          .join(' · ')}
+                      </small>
+                    </button>
+                  ))}
                 </div>
               ))}
               {!chapters.length && (

@@ -870,3 +870,57 @@ footer {
     overflow: visible;
   }
 }
+.public-curriculum {
+  overflow-wrap: anywhere;
+}
+.current-curriculum {
+  border-left: 3px solid var(--teal, #087f8c);
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+}
+.public-curriculum .curriculum-version h3 {
+  margin-bottom: 0.5rem;
+}
+.public-curriculum .curriculum-semester {
+  margin-top: 1.5rem;
+}
+.public-curriculum h4 {
+  font-size: 1.1rem;
+}
+.public-curriculum h5 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+.public-curriculum li {
+  margin-bottom: 0.5rem;
+}
+.curriculum-history {
+  border-top: 1px solid #dce5e5;
+  padding-top: 0.75rem;
+}
+.topic-options,
+.topic-options fieldset {
+  min-inline-size: 0;
+}
+.topic-options .topic-semester,
+.topic-options .topic-chapter {
+  border: 0;
+  padding: 0;
+  margin: 1rem 0;
+}
+.topic-options legend {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.topic-options .topic-semester > legend {
+  font-size: 1rem;
+}
+.topic-options .topic-semester > legend span {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: normal;
+}
+.topic-options .check {
+  overflow-wrap: anywhere;
+}
