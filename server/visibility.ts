@@ -1,5 +1,6 @@
 import { Bank, BankError, type Filters } from './database.js';
 import type { QuestionDocument, Taxonomy } from '../shared/schema.js';
+import { isPublishedCurriculum, publicQuestionSql } from './public-visibility-policy.js';
 
 export function publicDocument(doc: QuestionDocument): QuestionDocument {
   return {
@@ -12,7 +13,8 @@ export class VisibilityService {
   constructor(private readonly bank: Bank) {}
   async approved(id: string) {
     const row = await this.bank.one(
-      "SELECT v.snapshot,q.active_version FROM questions q JOIN question_versions v ON v.question_id=q.id AND v.version_number=q.active_version WHERE q.id=? AND q.status='approved' AND json_extract(v.snapshot,'$.question.status')='approved'",
+      'SELECT v.snapshot,q.active_version FROM questions q JOIN question_versions v ON v.question_id=q.id AND v.version_number=q.active_version WHERE q.id=? AND ' +
+        publicQuestionSql,
       id,
     );
     if (!row) throw new BankError('Question not found', 404);
@@ -27,7 +29,9 @@ export class VisibilityService {
   }
   async taxonomy(): Promise<Taxonomy> {
     const tax = await this.bank.taxonomy(),
-      curriculumVersions = (tax.curriculumVersions ?? []).filter((v) => v.status !== 'draft'),
+      curriculumVersions = (tax.curriculumVersions ?? []).filter((v) =>
+        isPublishedCurriculum(v.status),
+      ),
       semesters = tax.semesters.filter((s) =>
         curriculumVersions.some((v) => v.id === s.curriculumVersionId),
       ),
@@ -39,7 +43,9 @@ export class VisibilityService {
   async publicAsset(reference: string) {
     return Boolean(
       await this.bank.one(
-        "SELECT 1 FROM assets a JOIN questions q ON q.id=a.question_id JOIN question_versions v ON v.question_id=q.id AND v.version_number=q.active_version WHERE a.url=? AND a.kind!='original_pdf' AND q.status='approved' AND json_extract(v.snapshot,'$.question.status')='approved' LIMIT 1",
+        "SELECT 1 FROM assets a JOIN questions q ON q.id=a.question_id WHERE a.url=? AND a.kind!='original_pdf' AND " +
+          publicQuestionSql +
+          ' LIMIT 1',
         reference,
       ),
     );

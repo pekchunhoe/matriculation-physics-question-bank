@@ -1,6 +1,7 @@
 import type { DatabaseAdapter, SQLInputValue } from './database-adapter.js';
 import { randomUUID } from 'node:crypto';
 import { CurriculumService } from './curriculum.js';
+import { publicQuestionSql, publishedCurriculumSql } from './public-visibility-policy.js';
 import { questionExportSchema, type Classification } from '../shared/curriculum.js';
 import {
   documentSchema,
@@ -603,10 +604,7 @@ export class Bank {
   private query(filters: Filters, publicOnly = false) {
     const clauses: string[] = [];
     const params: SQLInputValue[] = [];
-    if (publicOnly)
-      clauses.push(
-        "q.status='approved' AND EXISTS(SELECT 1 FROM question_versions pv WHERE pv.question_id=q.id AND pv.version_number=q.active_version AND json_extract(pv.snapshot,'$.question.status')='approved')",
-      );
+    if (publicOnly) clauses.push(publicQuestionSql);
     if (filters.curriculum) {
       clauses.push(filters.curriculum === 'active' ? "cv.status='active'" : 'cv.id=?');
       if (filters.curriculum !== 'active') params.push(filters.curriculum);
@@ -700,12 +698,13 @@ export class Bank {
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
   async counts(course?: string, publicOnly = false) {
+    const clauses: string[] = [];
+    if (publicOnly) clauses.push(publishedCurriculumSql('cv'));
+    if (course) clauses.push('s.course_id=?');
     const rows = await this.all(
-      'SELECT s.id semester_id,c.id chapter_id,t.id topic_id,q.difficulty_id,count(q.id) count FROM semesters s LEFT JOIN chapters c ON c.semester_id=s.id LEFT JOIN topics t ON t.chapter_id=c.id LEFT JOIN questions q ON q.topic_id=t.id' +
-        (publicOnly
-          ? " AND q.status='approved' AND EXISTS(SELECT 1 FROM question_versions pv WHERE pv.question_id=q.id AND pv.version_number=q.active_version AND json_extract(pv.snapshot,'$.question.status')='approved')"
-          : '') +
-        (course ? ' WHERE s.course_id=?' : '') +
+      'SELECT s.id semester_id,c.id chapter_id,t.id topic_id,q.difficulty_id,count(q.id) count FROM semesters s JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id LEFT JOIN chapters c ON c.semester_id=s.id LEFT JOIN topics t ON t.chapter_id=c.id LEFT JOIN questions q ON q.topic_id=t.id' +
+        (publicOnly ? ' AND ' + publicQuestionSql : '') +
+        (clauses.length ? ' WHERE ' + clauses.join(' AND ') : '') +
         ' GROUP BY s.id,c.id,t.id,q.difficulty_id',
       ...(course ? [course] : []),
     );
