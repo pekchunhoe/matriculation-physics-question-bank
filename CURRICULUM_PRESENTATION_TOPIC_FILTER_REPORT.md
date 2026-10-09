@@ -2,13 +2,13 @@
 
 # CURRICULUM PRESENTATION + CHAPTER-GROUPED TOPIC FILTER
 
-**FINAL STATUS: BLOCKED ? public /api/counts exposes identifiers from the draft curriculum**
+**FINAL STATUS: PRODUCTION RUNTIME + CODE VERIFIED — READY FOR CURRICULUM ACTIVATION**
 
 Verified locally on 9 October 2026. The public curriculum now groups Course → Curriculum Version → Semester → Chapter → Topic. Topic checkboxes now group Semester → Chapter → Topic using stored order. The initial UI implementation made no production curriculum mutation, activation, question creation, Blob operation, migration, commit, push or deployment. The separately authorized commit/Preview follow-up is recorded below.
 
 ## ROOT CAUSES
 
-Public curriculum ambiguity: `PublicCurriculum.tsx` previously rendered every publicly eligible semester directly under its course, ignoring `curriculumVersionId`. Active and retired versions therefore produced duplicate-looking semester headings without version context. The server already excluded drafts correctly; its authorization policy needed no adjustment.
+Public curriculum ambiguity: `PublicCurriculum.tsx` previously rendered every publicly eligible semester directly under its course, ignoring `curriculumVersionId`. Active and retired versions therefore produced duplicate-looking semester headings without version context. The taxonomy/version APIs already excluded drafts correctly. The separately discovered public-counts and question visibility omissions are corrected in the security-fix section below.
 
 Flat Topic filter issue: `Browser.tsx` previously mapped the API's flat topic array directly into checkboxes. The API orders records by `sort_order` and name across the table; topic orders restart within each chapter. Mapping that array globally interleaved topics from different chapters.
 
@@ -54,7 +54,7 @@ No official-course subtitle is required. Renaming semesters to Physics 1 (SP015)
 
 ## SECURITY AND SCHEMA
 
-Initial taxonomy/version/export and page checks found no draft leakage. Follow-up live verification confirms **draft identifier leakage through `/api/counts`**, documented below. Auth behavior changed: **NO**. Production database writes: **NO**. Production curriculum activation: **NO**. Blob access/writes: **NO**. Migration 004: **NO**. No authentication, sessions, CSRF, public/private visibility, storage, API or schema source changed.
+Initial taxonomy/version/export and page checks found no draft leakage. Follow-up verification found draft identifier leakage through `/api/counts` on the prior Preview. The new security fix and protected Preview verification below resolve it. The remaining statements in this initial UI section describe that earlier implementation scope. Auth behavior changed: **NO**. Production database writes: **NO**. Production curriculum activation: **NO**. Blob access/writes: **NO**. Migration 004: **NO**. No authentication, sessions, CSRF, public/private visibility, storage, API or schema source changed.
 
 The new browser fixture explicitly creates SQLite `:memory:` banks and serves the unchanged real application on ephemeral loopback ports. Fixture preparation imports the copied curriculum and simulates activation only in that isolated bank. One test leaves it draft; positive-result tests add four synthetic, approved, test-only questions locally. The existing migration runner seeds only the isolated test databases. Quality commands run with Turso/Blob credentials removed. The committed JSON fixture matches the complete approved import model; the approved artifact itself is untouched.
 
@@ -265,7 +265,7 @@ Evidence: ignored `data/curriculum-preview-review/` contains final local logs/re
 
 After the push, tracked files were clean. This post-deployment report update is the only intentional tracked working-tree modification and remains local; the verified Preview continues to match the exact pushed UI commit above. Existing unrelated untracked reports remain untouched and excluded. No additional commit/push/deployment was made after discovering the security blocker.
 
-**FINAL STATUS: BLOCKED ? public /api/counts exposes identifiers from the draft curriculum**
+**PRIOR PREVIEW STATUS: BLOCKED - public /api/counts exposed draft identifiers; resolved by the security fix below**
 
 Stopped without curriculum activation, LEGACY retirement, Production deployment or Preview promotion. A public-counts visibility fix and repeat protected Preview security check are required before activation review can proceed.
 
@@ -309,8 +309,406 @@ A fresh SELECT-only audit confirms LEGACY active, PHYSICS-2022-2023 draft, quest
 
 Intended files for this security commit: `server/database.ts`, `server/visibility.ts`, `server/public-visibility-policy.ts`, `tests/public-counts.test.ts`, `tests/browser/public-counts.spec.ts` and this report (including the prior authorized Preview handoff). No frontend source, approved fixture/artifact, schema, migration or unrelated report is included.
 
-Commit/push/new protected Preview verification: **pending at this pre-commit checkpoint**. A new commit will use `Fix draft taxonomy leakage in public counts` on top of `fbaba37c5f0099c66edbce90b342fd89235f3d67`; the old leaking Preview will not be used as proof of the fix. Final deployment results will be appended after the new pushed commit is verified.
+The pre-commit checkpoint passed. The focused security fix was subsequently committed, pushed and verified on the new protected Preview below. The earlier blocked Preview evidence is historical and superseded by this verification.
 
 Production activation, LEGACY retirement, Production deployment/promotion, real question creation and Blob write: **NO**.
 
 Evidence for this fix is separate in ignored `data/public-counts-fix/`.
+
+### COMMIT / PUSH / NEW PROTECTED PREVIEW
+
+Commit: `4222aac1e4f3d27e641bd59e64a62a0e47dbec31`.
+
+Message: `Fix draft taxonomy leakage in public counts`.
+
+Parent: `fbaba37c5f0099c66edbce90b342fd89235f3d67`, unchanged. Six intended files were reviewed and staged; staged diff/whitespace and secret-pattern checks passed. Unrelated untracked reports were excluded.
+
+Push: **PASS**, normal fast-forward to `origin/feat/admin-security`, with the remote revision independently matching the local commit. No amend or force push.
+
+New Preview: **https://matriculation-physics-question-bank-4qtz43m2u.vercel.app**.
+
+Deployment ID: `dpl_44eZ9jxV27oJLQGn4R1dqokZnsur`. Environment: **Preview**. State: **READY**. Branch: `feat/admin-security`. Exact commit match: **PASS**. The Git push triggered this new deployment; neither older leaking Preview was used as proof of the fix.
+
+Deployment Protection: **PASS**. An unauthenticated transport request returns HTTP 302 to Vercel authentication. Existing Vercel automation authentication was held only in memory for this exact Preview origin. Question Bank requests remained anonymous; no application login/session was created. Protected health returns HTTP 200, status ok and database connected. Protection and environment bindings remain unchanged; existing Production deployment IDs remain unchanged.
+
+### LIVE PREVIEW SECURITY / UI
+
+Verification completed on 9 October 2026 after deployment.
+
+| Check | Result |
+| --- | --- |
+| `/api/counts` anonymous draft leakage | **NONE**; HTTP 200, exactly two eligible LEGACY placeholder rows, all counts zero |
+| Draft curriculum ID leaked | **NO** |
+| Draft semester IDs leaked | **NO** |
+| Draft chapter IDs leaked | **NO** |
+| Draft topic IDs leaked | **NO** |
+| Full serialized draft-ID scan | **PASS**, zero matches across all 103 draft hierarchy IDs, including all 82 topic IDs |
+| Course-filtered counts / spoofed role and draft-version parameters | **PASS**, same eligible rows; no authorization bypass |
+| Public taxonomy | **PASS**, LEGACY active only; draft hierarchy absent |
+| Public curriculum versions | **PASS**, draft absent |
+| Public question listing / draft-version filter | **PASS**, zero public questions; no hidden identifiers |
+| Draft version export | **PASS**, HTTP 401 without application admin authentication |
+| Related facets/summaries audit | **PASS**, no separate bypass route; listing totals and taxonomy derive from the corrected shared boundary |
+| Desktop 1280x1000 | **PASS**, current curriculum, browser, zero-question state, semester/difficulty controls, reload/Back/Forward and no overflow |
+| Mobile 390x844 | **PASS**, same checks plus Filters open/close and aria-expanded |
+| Console / uncaught errors | **NONE** |
+| Failed application loads / write attempts | **NONE** |
+| Live filter accessibility | **PASS**, zero axe violations in either viewport |
+
+The entire raw body of every tested public API response was scanned, rather than selected fields. Draft version display name/code were also absent. Approved active/retired questions, authenticated admin draft counts, hidden approved-status draft questions, direct reads, question sets and asset permissions are proven by isolated fixtures; production has no questions/assets for positive live cases. The production-backed question-set route was not exercised because its rate-limit accounting can write rows.
+
+The actual Preview shows the current LEGACY hierarchy and empty filters. Future-active 82-topic chapter grouping, stored ordering, stable IDs, difficulty combinations, long labels and URL state remain certified separately by the **31 passing isolated browser tests**. No production activation was used for UI verification.
+
+The in-app browser connection was unavailable; verification used the existing standalone Chromium test tools against the deployed application. Application traffic allowed GET/HEAD only and excluded uploads. No trace, HAR, cookie jar, persistent profile, credentials or raw project secrets were saved. All four Preview screenshots were visually reviewed:
+
+- [Desktop curriculum](data/public-counts-fix/preview-desktop-curriculum.png)
+- [Desktop filters](data/public-counts-fix/preview-desktop-filters.png)
+- [Mobile curriculum](data/public-counts-fix/preview-mobile-curriculum.png)
+- [Mobile filters](data/public-counts-fix/preview-mobile-filters.png)
+
+### FINAL QUALITY / PRODUCTION STATE / ACTIONS
+
+Unit/integration: **PASS, 126**. Browser: **PASS, 31**. Typecheck, lint, DB/schema, API/ESM, storage, auth, build, formatting, reviewed staged diff and final `git diff --check`: **PASS**. Existing tests were retained. The report-only post-deployment update requires no additional application build.
+
+SELECT-only production audits at **2026-10-09 12:09:39 UTC** and **12:18:50 UTC** compare identically across all audited domain rows, counts, schema and migration history, and match the completed import baseline.
+
+| Final production check | Result |
+| --- | --- |
+| LEGACY active | **PASS**, revision 1 unchanged |
+| PHYSICS-2022-2023 draft | **PASS**, revision 1 unchanged; not active |
+| Combined draft hierarchy | **2 semesters / 18 chapters / 82 topics / 0 subtopics**, unchanged |
+| Questions / assets | **0 / 0** |
+| Curriculum events | **1**, unchanged; no activation event |
+| Production database mutation | **NO** |
+| Migration / migration 004 | **NO** |
+| Curriculum activation / LEGACY retirement | **NO / NO** |
+| Real question creation / Blob access or write | **NO / NO** |
+| Production deployment / Preview promotion | **NO / NO** |
+
+Unchanged SHA-256 fingerprints:
+
+- Domain rows: `793c3d0b43fdca3f5e54a939c16736a26bc5dc09b8985db63265e36affdf0e85`.
+- Schema: `c88838ecec773071996bc1a77825c0443f1a6faa2217b4f49c3fa01ce81837ae`.
+- Migration history: `ecfed613f40e9ecee5f886c04692b8500e9b5ef2db29272c9facd4b551e89db2`.
+- Approved combined artifact: `5350252cd5a76faa78437e338cf54c16a2c4e62ceb694216fb806b8f33753ace`.
+
+The retained pre-import backup, curriculum normalization/source variants, production bindings and permanent semester identities were preserved.
+
+After pushing, tracked files were clean. This final post-deployment report update is the only intentional tracked working-tree modification and remains local. The source and branch still match the exact pushed security-fix commit and verified Preview. No additional commit, push or deployment was made after final verification. Unrelated untracked reports remain untouched and excluded.
+
+Ignored `data/public-counts-fix/` retains sanitized quality results, staged review, exact deployment metadata, protected health, full-payload API/browser assertions, screenshots, SELECT-only before/after audits and unchanged project/Production-deployment evidence. `final-verification.json` records the combined passing outcome.
+
+**FINAL STATUS: PUBLIC DRAFT LEAK FIXED — PROTECTED PREVIEW VERIFIED**
+
+Stopped after protected Preview verification. No curriculum activation, LEGACY retirement, Production deployment or Preview promotion occurred.
+
+## PRODUCTION DEPLOYMENT VERIFICATION
+
+Verification attempted on 9 October 2026 (Asia/Kuala_Lumpur). **FINAL STATUS: BLOCKED — Production Turso/Blob environment bindings are absent, and changing environment variables/bindings is prohibited in this task.** No deployment or promotion was attempted.
+
+### SOURCE COMMIT
+
+Required and actual HEAD: `4222aac1e4f3d27e641bd59e64a62a0e47dbec31`.
+Branch: `feat/admin-security`. Exact source match: **PASS**.
+The protected Preview deployment `dpl_44eZ9jxV27oJLQGn4R1dqokZnsur` is READY and independently matches this SHA in both Git-source and commit metadata. Its URL remains https://matriculation-physics-question-bank-4qtz43m2u.vercel.app.
+
+Working-tree review: the only tracked modification is this report. Untracked files are the existing unrelated report documents. Application source is unchanged; no local-source deployment, commit, push, merge or source edit was performed.
+
+### PRODUCTION DEPLOYMENT
+
+Deployment ID: **NONE created/promoted during this task**.
+Production URL: https://matriculation-physics-question-bank.vercel.app.
+Existing current deployment ID: `dpl_3FCguRKmgxBs6c39sU5ovq9FJoVQ`.
+Environment: **Production (existing deployment only)**.
+Existing Production commit: `d7bfee9b14d2c09c8160e036a009121eb2e59165`.
+Production commit match: **FAIL — the requested commit has not been deployed**.
+
+### EXACT BLOCKER
+
+Fresh project environment metadata has only Preview targets for `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `BLOB_STORE_ID` and `BLOB_WEBHOOK_PUBLIC_KEY`. Independently inspected deployment variable-name lists confirm these variables exist in the verified Preview and are absent from the existing Production deployment. Variable values, provider credentials and protection secrets were neither printed nor persisted. No Production-scoped project binding exists for these four variables.
+
+[Vercel's documented Preview promotion](https://vercel.com/docs/deployments/promote-preview-to-production) rebuilds the same source using Production environment variables. The working Preview variables therefore do not establish working Production bindings. The verified runtime requires both Turso variables and fails closed without them; its health handler returns database-unavailable rather than silently selecting another database.
+
+Promoting now cannot meet the required healthy Production verification without a binding/environment change. Such changes were explicitly prohibited, so neither a known-unhealthy promotion nor an environment repair was attempted. A direct alias to Preview would not meet the required Production-environment check. Production domain, authentication/protection configuration and environment metadata were independently confirmed unchanged.
+
+Required separately authorized follow-up: configure Production scope for the same intended Turso database and Blob store, preserving the existing Preview scope, then stage/deploy this exact Git commit, verify health before promotion, and complete the Production security/UI audits. Curriculum activation must remain a later, separately authorized operation.
+
+### HEALTH
+
+| Check | Result |
+| --- | --- |
+| Production homepage HTML | HTTP 200; application functionality is not certified |
+| Production `/api/health` | **FAIL — HTTP 500, FUNCTION_INVOCATION_FAILED, existing deployment** |
+| Production `/api/taxonomy` | **FAIL — HTTP 500, existing deployment** |
+| Production `/api/curriculum-versions` | **FAIL — HTTP 500, existing deployment** |
+| Production `/api/counts` | **FAIL — HTTP 500, existing deployment** |
+| Verified protected Preview health | PASS — HTTP 200, status ok, database connected |
+| Verified protected Preview taxonomy/versions/counts | HTTP 200; diagnostic checks only, not Production certification |
+
+Production failures were observed before any deployment action. Their exact server cause was not established; missing Production bindings independently block the new runtime. No claim is made that the existing 500 is caused solely by missing variables.
+
+### PUBLIC SECURITY
+
+`/api/counts` draft IDs: **NOT CERTIFIED — no valid Production JSON payload**.
+103-ID full scan: **BLOCKED**, not counted as a zero-leak pass on a server-error body.
+82-topic scan: **BLOCKED**.
+Public taxonomy draft leakage: **NOT CERTIFIED**, endpoint returns HTTP 500.
+Public curriculum-version draft leakage: **NOT CERTIFIED**, endpoint returns HTTP 500.
+Related question/filter/count/facet certification: **BLOCKED**, requested commit is absent from Production.
+
+### PUBLIC UI
+
+Desktop 1280x1000: **BLOCKED — requested Production code/backend not available**.
+Mobile 390x844: **BLOCKED — requested Production code/backend not available**.
+Console errors: **NOT VERIFIED**.
+Curriculum page, question browser, navigation, filters, zero-question state, duplicate headings, raw identifiers and overflow: **NOT CERTIFIED in Production**.
+The Browser skill connection reported no available browsers. Standalone Chromium tooling is available from prior verification, but a visual certification of this unrelated failing Production deployment would not certify the requested release. Prior protected Preview and isolated UI passes remain historical evidence only.
+
+Admin read-only UI: **NOT RUN**. No application admin login/session was created, avoiding authentication-state writes under the read-only constraint. The complete hierarchy and statuses were checked directly with SELECT-only database audits.
+
+### DATABASE
+
+Before audit: `2026-10-09T14:23:43.109Z`.
+After audit: `2026-10-09T14:26:22.954Z`.
+
+| Check | Result |
+| --- | --- |
+| LEGACY active | **PASS**, unchanged |
+| PHYSICS-2022-2023 draft | **PASS**, unchanged |
+| Draft hierarchy | **PASS**, 2 semesters / 18 chapters / 82 topics / 0 subtopics |
+| Questions | **0**, unchanged |
+| Assets | **0**, unchanged |
+| Curriculum events | **1**, unchanged; unexpected events: **NONE** |
+| Taxonomy/domain rows | Identical before/after and to approved post-import baseline |
+| Production database mutation from this task/deployment | **NO**; deployment not performed |
+| Blob writes/access | **NO operations performed** |
+
+Unchanged SHA-256 fingerprints:
+
+- Domain rows: `793c3d0b43fdca3f5e54a939c16736a26bc5dc09b8985db63265e36affdf0e85`.
+- Schema: `c88838ecec773071996bc1a77825c0443f1a6faa2217b4f49c3fa01ce81837ae`.
+- Migration history: `ecfed613f40e9ecee5f886c04692b8500e9b5ef2db29272c9facd4b551e89db2`.
+- Approved combined artifact: `5350252cd5a76faa78437e338cf54c16a2c4e62ceb694216fb806b8f33753ace`.
+
+### QUALITY / SEMESTER POLICY
+
+Previous verified quality for the exact commit: **126 unit/integration tests and 31 browser tests PASS**, as recorded in the protected Preview section. Expensive suites were not rerun; no source change or deployed-code discrepancy was introduced.
+Permanent Semester 1 / Semester 2 naming retained: **PASS**, stored rows unchanged.
+SP015/SP025 permanent hard-coding: **NO**; scan of generic src/server/shared/api/scripts returned no occurrences.
+Migration 004: **NO**; only existing migrations 001–003 remain.
+
+### ACTIONS
+
+Production deployment: **NO — blocked before promotion**.
+Curriculum activation: **NO**.
+LEGACY retirement: **NO**.
+Database migration: **NO**.
+Taxonomy write: **NO**.
+Question creation: **NO**.
+Blob write: **NO**.
+Environment/binding/domain/authentication changes: **NO**.
+
+Sanitized evidence: `data/production-deployment-verification/` contains source/provider checks, variable names only, current HTTP diagnostics, and SELECT-only before/after database audits. This report update remains local and is the only tracked modification.
+
+**FINAL STATUS: BLOCKED — required Production database/storage bindings are absent; environment/binding changes are prohibited. Production code is NOT yet verified or ready for curriculum activation.**
+
+## PRODUCTION RUNTIME BINDING REPAIR + DEPLOYMENT
+
+**FINAL STATUS: PRODUCTION RUNTIME + CODE VERIFIED — READY FOR CURRICULUM ACTIVATION.**
+
+Completed on 9 October 2026 (Asia/Kuala_Lumpur). This separately authorized binding repair and deployment supersedes the preceding blocked Production attempt. **Curriculum activation was NOT performed.**
+
+### BLOCKER BEFORE
+
+Production Turso binding: **MISSING** — both required variables were scoped only to Preview.
+Production Blob binding: **MISSING** — approved private store connected only to Preview.
+Production APIs: **HTTP 500** on health, taxonomy, versions and counts before repair. These failures are historical; the new deployment passes below.
+
+### RUNTIME AUDIT
+
+Inspected actual environment reads across src/server/shared/api/scripts, hosted runtime and handler, Turso adapter, Blob adapter/SDK, authentication/session code, and Vercel deployment configuration. Presence below is the initial project environment audit; platform-managed rows reflect provider-supplied deployment/runtime capabilities. Local-only entry variables are not required by the hosted API.
+
+| Variable / binding name | Purpose | Preview present | Production present before → after | Config vs Secret | Required at runtime/build/both |
+| --- | --- | --- | --- | --- | --- |
+| TURSO_DATABASE_URL | Approved remote database endpoint | YES | NO → YES | Config | Runtime |
+| TURSO_AUTH_TOKEN | Database-specific server read/write access | YES | NO → YES | Secret | Runtime |
+| BLOB_STORE_ID | Exact approved private store identifier | YES | NO → YES | Config | Runtime for asset storage |
+| BLOB_WEBHOOK_PUBLIC_KEY | Public verification key provisioned by the managed connection | YES | NO → YES | Config | Provider connection config; this app has no webhook consumer |
+| VERCEL | Platform indicator required by hosted Blob adapter | YES | YES → YES | Config, platform-managed | Runtime |
+| VERCEL_OIDC_TOKEN / x-vercel-oidc-token | SDK-managed short-lived store authentication | YES | YES → YES | Secret, platform-managed | Both; functions use request-context token |
+| BLOB_READ_WRITE_TOKEN | Optional SDK static-token fallback; deliberately unused | NO | NO → NO | Secret | Optional; not required with OIDC |
+| VERCEL_OIDC_TOKEN_FILE | Optional SDK local-development fallback | NO | NO → NO | Secret-file reference | Local only; not required by deployed app |
+| BANK_DATA_DIR | Local SQLite/uploads path | NO | NO → NO | Config | Local entry only |
+| PORT | Local listener port | NO | NO → NO | Config | Local entry only |
+| NODE_ENV | Existing local entry's production/static-files switch | NO | NO → NO | Config | Local entry read; hosted API has no read/dependency; platform/build handles mode |
+
+No additional application-origin variable or authentication/session secret is required. Hosted auth mode is an explicit handler option; CSRF derives the expected HTTPS origin from the request Host. Session tokens are generated with cryptographic randomness and hashed into Turso. Admin password records and durable throttling also live in Turso. No authentication, cookie or CSRF design was changed.
+
+Variables are server-side, without a client-public prefix. They are delivered during the provider build/deployment flow but the application requires them at runtime. No Preview-wide environment clone was performed.
+
+### PRODUCTION TURSO
+
+Database identity: **PASS** — existing `matriculation-physics-question-bank`.
+Approved host: `matriculation-physics-question-bank-pekchunhoe.aws-ap-northeast-1.turso.io`.
+URL configured: **PASS**, `TURSO_DATABASE_URL`, Production only, Config.
+Fresh Production token created: **PASS**, using authenticated Turso CLI against this exact database.
+Token write-capable: **PASS**, normal database-specific token creation without `--read-only` or `--group`; signed token permission claim confirms `rw`.
+Token lifetime: default non-expiring; no automatic rotation was configured in this task.
+Token stored as Secret: **PASS**, `TURSO_AUTH_TOKEN`, Production only, Vercel `sensitive` type.
+Production Turso token configured: **YES**.
+Token value exposed: **NO**.
+
+The token was captured only in process memory and immediately sent to Vercel through stdin. No token appeared in arguments, output, history, temporary plaintext files, report files or repository files. A SELECT-only connection using the fresh token verified LEGACY active and PHYSICS-2022-2023 draft. The Preview token was not read, copied or reused.
+
+### PRODUCTION BLOB
+
+Existing private store reused: **PASS** — `store_El7fbP5PEpIgQK5i`, `matriculation-physics-quest-blob`.
+Private access retained: **PASS**.
+Production connection: **PASS**, same existing project, Production environment, BLOB prefix.
+Authentication: **OIDC**.
+Long-lived token unnecessarily created: **NO**; no `BLOB_READ_WRITE_TOKEN` exists.
+Preview connection preserved: **PASS**, separate original Preview grant retained.
+Preview variable metadata preserved: **PASS**, original IDs, targets, types and timestamps unchanged.
+
+The reviewed Production-only OIDC dry run added only BLOB_STORE_ID and BLOB_WEBHOOK_PUBLIC_KEY, with no removals. The applied connection preserves both Production and Preview grants. Project OIDC remains enabled with its existing issuer mode. The new deployment's provider variable-name list includes VERCEL_OIDC_TOKEN, and the SDK obtains runtime OIDC from Vercel request context. No token was copied or pinned.
+
+Blob adapter initialization: **PASS**, non-mutating live request `GET /uploads/invalid` returns HTTP 400 with `Invalid asset reference`. The committed route checks configured storage before validating this reference, so this proves the hosted storage adapter initialized rather than returning the storage-not-configured 503. An additional nonexistent logical filename returned the expected anonymous Asset not found 404; it did not access Blob.
+
+Scope of this check: configuration, grants, platform OIDC availability and adapter initialization were verified. No live Blob object authorization/transfer was exercised; there are zero asset rows. No real objects were enumerated/read, no disposable object was needed, and no permanent or temporary Blob write occurred. Strict store-hostname validation remains unchanged in the exact source commit.
+
+### OTHER PRODUCTION CONFIG / PRE-DEPLOY GATE
+
+BLOB_WEBHOOK_PUBLIC_KEY: **configured by provider**; public key, not a credential.
+VERCEL / managed OIDC: **provider supplied**.
+Other required manual bindings: **NONE**.
+Turso URL / Secret token / private Blob Production grant / OIDC / required store config: **ALL PASS before deployment**.
+No new database, store, authentication secret or application-origin override was introduced.
+
+### SOURCE
+
+Branch: `feat/admin-security`.
+Commit: `4222aac1e4f3d27e641bd59e64a62a0e47dbec31`.
+Exact commit deployed: **PASS**.
+
+HEAD, the verified Preview Git-source SHA, its commit metadata, the new Production Git-source SHA and its commit metadata match the required source state. The only tracked working-tree modification is this local report; unrelated untracked reports were excluded. Deployment used Vercel promotion of the existing verified Git-backed Preview, which builds its source with the repaired Production environment. It did not upload or build the local modified working tree. No new source commit, amend, push, merge or branch-policy change occurred.
+
+### PRODUCTION DEPLOYMENT
+
+Deployment ID: `dpl_58Mosh38gxxsaNRYqcbByiNHJx9J`.
+Production URL: https://matriculation-physics-question-bank.vercel.app.
+Immutable deployment URL: https://matriculation-physics-question-bank-e2puhmr9p.vercel.app.
+Environment: **Production**.
+State: **READY**.
+Commit match: **PASS**, `4222aac1e4f3d27e641bd59e64a62a0e47dbec31`.
+Existing Production domain alias match: **PASS**.
+
+Production branch remains master; promoting the approved feature-branch commit did not change that setting. Existing domain definitions and deployment protection/authentication configuration are unchanged. Only the current deployment serving the existing domain was advanced.
+
+### HEALTH
+
+`/api/health`: **PASS**, anonymous HTTP 200, `{ "status": "ok", "database": "connected" }`.
+Previous HTTP 500 resolved: **PASS** on health, public taxonomy, public versions and counts.
+Homepage, curriculum page and question browser: **PASS**, rendered in actual Production on both viewports.
+Unexpected server/asset/API 404/500 responses during public navigation: **NONE**. Expected unauthenticated draft export 401 and deliberate storage-reference rejection are separate security/capability probes, not failed page loads.
+
+### PUBLIC SECURITY
+
+`/api/counts` 103-ID scan: **PASS**.
+Draft identifiers found: **0**.
+82-topic scan: **PASS**, **0 matches**.
+Public taxonomy draft leak: **NONE**.
+Public version draft leak: **NONE**.
+
+Every tested entire raw API payload was scanned against the complete draft version + two semester + 18 chapter + 82 topic IDs. The scan set was independently matched to the SELECT-only Production hierarchy. Draft display code/name were also absent. Counts return exactly two eligible LEGACY placeholder rows, with zero counts and no chapter/topic IDs.
+
+Anonymous health, taxonomy, curriculum versions, questions, base/course-filtered counts, counts with spoofed admin/draft parameters, auth/session, and draft-filtered questions return their expected HTTP 200 responses without draft IDs. Direct draft export returns HTTP 401 without exposing identifiers. Anonymous session remains authenticated:false. Public listing totals/counts/taxonomy cover the relevant public facets; no separate bypass endpoint was found in the earlier reviewed API implementation.
+
+The rate-limited public question-set route was not exercised, avoiding durable security-rate accounting writes. Positive approved active/retired-question and authenticated admin-count cases remain certified by isolated tests; Production has zero questions/assets and was not activated for demonstrations.
+
+### PUBLIC UI
+
+| Check | Desktop 1280x1000 | Mobile 390x844 |
+| --- | --- | --- |
+| Homepage / curriculum / question browser | PASS | PASS |
+| Current LEGACY / permanent semester names | PASS | PASS |
+| Draft hidden / no duplicate unpublished headings or visible draft IDs | PASS | PASS |
+| Navigation / semester / difficulty controls | PASS | PASS |
+| URL persistence / reload / Back / Forward | PASS | PASS |
+| Filter panel / zero-question state | PASS | PASS |
+| Horizontal overflow | NONE | NONE |
+| Console / uncaught JavaScript errors | NONE | NONE |
+| Failed application loads | NONE | NONE |
+| Axe accessibility violations in filter view | 0 | 0 |
+
+Applied the Browser skill. In-app browser discovery returned no available browser; live verification used the existing Chromium tooling. Production checks were anonymous, with no Vercel bypass header or Question Bank login. Browser traffic to the application allowed GET/HEAD only and blocked uploads/writes; no blocked-write attempt occurred. No HAR, trace, cookie jar, persistent profile or raw session data was retained.
+
+All four actual Production screenshots were visually reviewed:
+
+- [Desktop curriculum](data/production-runtime-binding-repair/production-desktop-curriculum.png)
+- [Desktop filters](data/production-runtime-binding-repair/production-desktop-filters.png)
+- [Mobile curriculum](data/production-runtime-binding-repair/production-mobile-curriculum.png)
+- [Mobile filters](data/production-runtime-binding-repair/production-mobile-filters.png)
+
+Future-active 82-topic chapter grouping and historical separation remain certified by the prior isolated full-curriculum suite. This live review correctly shows only LEGACY and its empty topic shell while the new hierarchy stays draft.
+
+### ADMIN RUNTIME CHECK
+
+A hosted admin login was **not required and not performed**. The dedicated token's write capability was verified from its permissions, and database identity/state were verified through SELECTs. Public auth/session correctly returns anonymous. No password or session cookie was requested, exposed or saved. Session creation/persistence through a hosted login is not claimed as a new live test; existing exact-commit authentication suites remain passing evidence.
+
+### DATABASE
+
+Read-only precheck: `2026-10-09T14:37:52.157Z`.
+Read-only postcheck: `2026-10-09T14:43:49.223Z`.
+
+| Check | Result |
+| --- | --- |
+| LEGACY active | PASS, revision/status unchanged |
+| PHYSICS-2022-2023 draft | PASS, revision/status unchanged |
+| Draft semesters / chapters / topics / subtopics | 2 / 18 / 82 / 0, exact before/after match |
+| Questions | 0 |
+| Assets | 0 |
+| Curriculum events | 1, unchanged |
+| Activation events added | 0 |
+| Curriculum / taxonomy / question mutation | NO |
+| Schema / migrations | Unchanged, existing 001–003 only |
+| Admin session/rate-limit activity from this task | NONE; no login or rate-limited route used |
+| Blob object reads/enumeration/writes | NONE |
+
+Unchanged SHA-256 fingerprints:
+
+- Domain: `793c3d0b43fdca3f5e54a939c16736a26bc5dc09b8985db63265e36affdf0e85`.
+- Schema: `c88838ecec773071996bc1a77825c0443f1a6faa2217b4f49c3fa01ce81837ae`.
+- Migration history: `ecfed613f40e9ecee5f886c04692b8500e9b5ef2db29272c9facd4b551e89db2`.
+- Approved artifact: `5350252cd5a76faa78437e338cf54c16a2c4e62ceb694216fb806b8f33753ace`.
+
+### PREVIEW / QUALITY / SEMESTER POLICY
+
+Original protected Preview remains READY at https://matriculation-physics-question-bank-4qtz43m2u.vercel.app. Protected health: **PASS**, HTTP 200, database connected. Unauthenticated transport: **HTTP 302**, protection retained. Preview environment definitions and original private-store grant are unchanged.
+
+Previous exact-commit quality: **126 unit/integration tests PASS; 31 browser tests PASS**. No expensive suite was unnecessarily rerun. New checks exercised actual Production API responses and UI; they made no application-source changes. Final git diff --check: **PASS**.
+
+Semester 1 / Semester 2 permanent naming: **PRESERVED**.
+SP015/SP025 permanent hard-coding: **NO**.
+Migration 004: **NO**.
+
+### ACTIONS
+
+Production bindings changed: **YES**, only missing required approved-resource bindings.
+Production deployment: **YES**.
+Fresh dedicated Production Turso token: **YES**, Secret, write-capable.
+Existing private Blob Production OIDC connection: **YES**.
+Curriculum activation: **NO**.
+LEGACY retirement: **NO**.
+Database schema migration: **NO**.
+Taxonomy mutation: **NO**.
+Question creation: **NO**.
+Permanent or disposable Blob write: **NO**.
+New database / new Blob store / static Blob credential: **NO**.
+Application source / authentication design / CSRF / cookie changes: **NO**.
+Git commit / amend / push / merge: **NO**.
+
+Sanitized evidence remains in ignored `data/production-runtime-binding-repair/`, including variable names/scopes, provider connection checks, source/deployment correlation, anonymous complete-payload security assertions, live browser results/screenshots, SELECT-only database audits, and final verification. Secret values were never saved. The updated report remains local and is the only tracked working-tree modification.
+
+**FINAL STATUS: PRODUCTION RUNTIME + CODE VERIFIED — READY FOR CURRICULUM ACTIVATION.**
+
+Stopped after verification. PHYSICS-2022-2023 remains draft and LEGACY remains active. Activation requires the next separately authorized operation.
