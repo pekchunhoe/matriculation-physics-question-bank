@@ -44,13 +44,14 @@ function scratch() {
     },
   };
 }
-function blobFixture() {
+function blobFixture(storeId = 'store_test123') {
   const entries = new Map<string, { bytes: Buffer; mime: string }>();
   const calls: { operation: string; pathname: string; options: unknown }[] = [];
   const faults = {
     operation: '',
     contentType: '',
     publicUrl: false,
+    url: '',
     readBytes: undefined as Buffer | undefined,
   };
   const record = (operation: string, pathname: string, options: unknown) => {
@@ -60,7 +61,9 @@ function blobFixture() {
   const metadata = (pathname: string) => {
     const entry = entries.get(pathname);
     if (!entry) throw new BlobNotFoundError();
-    const url = `https://test123.${faults.publicUrl ? 'public' : 'private'}.blob.vercel-storage.com/${pathname}`;
+    const url =
+      faults.url ||
+      `https://${storeId.replace(/^store_/, '')}.${faults.publicUrl ? 'public' : 'private'}.blob.vercel-storage.com/${pathname}`;
     return {
       pathname,
       url,
@@ -111,7 +114,7 @@ function blobFixture() {
     },
   };
   return {
-    storage: new VercelBlobAssetStorage('store_test123', transport),
+    storage: new VercelBlobAssetStorage(storeId, transport),
     entries,
     calls,
     faults,
@@ -314,6 +317,71 @@ test('Private Blob adapter cannot delete arbitrary URLs, other namespaces or leg
     await assert.rejects(env.storage.get(key), AssetStorageError);
   }
   assert.equal(env.calls.length, 0);
+});
+
+for (const storeId of ['store_TeSt123AbC', 'store_test123abc']) {
+  test(`Private Blob adapter accepts canonical private metadata for ${storeId}`, async () => {
+    const env = blobFixture(storeId);
+    const expectedHost = 'test123abc.private.blob.vercel-storage.com';
+    assert.equal(
+      new URL(`https://${storeId.slice('store_'.length)}.private.blob.vercel-storage.com`).hostname,
+      expectedHost,
+    );
+    const upload = await env.storage.put(validateUpload(pdf, 'synthetic.pdf'));
+    assert.equal(assetKeyFromReference(upload.url), upload.key);
+    assert.ok(!JSON.stringify(upload).includes('blob.vercel-storage.com'));
+    assert.equal((await env.storage.metadata(upload.key))?.sha256, upload.sha256);
+    assert.deepEqual((await env.storage.get(upload.key))?.bytes, pdf);
+    for (const call of env.calls)
+      assert.equal((call.options as { storeId: string }).storeId, storeId);
+  });
+}
+
+test('Private Blob hostname normalization retains exact store, host and HTTPS validation', async () => {
+  const env = blobFixture('store_TeSt123AbC');
+  const upload = await env.storage.put(validateUpload(pdf, 'synthetic.pdf'));
+  const pathname = blobAssetPrefix + upload.key;
+  const expectedHost = 'test123abc.private.blob.vercel-storage.com';
+  const invalidUrls = [
+    `https://otherstore.private.blob.vercel-storage.com/${pathname}`,
+    `https://test123abc.public.blob.vercel-storage.com/${pathname}`,
+    `https://attacker.${expectedHost}/${pathname}`,
+    `https://${expectedHost}.attacker.example/${pathname}`,
+    `https://attackertest123abc.private.blob.vercel-storage.com/${pathname}`,
+    `https://test123abcattacker.private.blob.vercel-storage.com/${pathname}`,
+    `http://${expectedHost}/${pathname}`,
+    'not a URL',
+    `https://unrelated.example/${pathname}`,
+    `https://${expectedHost}@attacker.example/${pathname}`,
+    `https://attacker@${expectedHost}/${pathname}`,
+    `https://${expectedHost}/other-namespace/${upload.key}`,
+    `https://${expectedHost}/${pathname}?token=TEST_ONLY`,
+    `https://${expectedHost}/${pathname}#fragment`,
+  ];
+  for (const url of invalidUrls) {
+    env.faults.url = url;
+    await assert.rejects(env.storage.metadata(upload.key), AssetStorageError);
+    await assert.rejects(env.storage.get(upload.key), AssetStorageError);
+  }
+});
+
+test('Genuine post-put host verification failures retain sanitized upload uncertainty without deletion', async () => {
+  const env = blobFixture('store_TeSt123AbC');
+  env.faults.publicUrl = true;
+  await assert.rejects(
+    env.storage.put(validateUpload(pdf, 'synthetic.pdf')),
+    (error: unknown) =>
+      error instanceof AssetWriteFailure &&
+      error.code === 'upload_uncertain' &&
+      error.status === 503 &&
+      Boolean(assetKeyFromReference(error.reconciliationReference)) &&
+      !error.message.includes('https://'),
+  );
+  assert.equal(env.entries.size, 1);
+  assert.deepEqual(
+    env.calls.map((call) => call.operation),
+    ['put'],
+  );
 });
 
 test('Private Blob adapter verifies private host, MIME, byte length and SHA-256', async () => {

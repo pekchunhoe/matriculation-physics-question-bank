@@ -44,10 +44,12 @@ export class VercelBlobAssetStorage implements AssetStorage {
     value: { pathname: string; contentType: string; size: number; uploadedAt: Date; url: string },
   ): AssetMetadata {
     const url = new URL(value.url);
+    const expectedHostname =
+      `${this.storeId.replace(/^store_/, '')}.private.blob.vercel-storage.com`.toLowerCase();
     if (
       value.pathname !== this.pathname(key) ||
       url.protocol !== 'https:' ||
-      url.hostname !== `${this.storeId.replace(/^store_/, '')}.private.blob.vercel-storage.com` ||
+      url.hostname.toLowerCase() !== expectedHostname ||
       url.pathname !== '/' + this.pathname(key) ||
       url.search ||
       url.hash ||
