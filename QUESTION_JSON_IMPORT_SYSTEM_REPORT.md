@@ -214,7 +214,7 @@ Chosen bounded design: browser decodes one JSON, sends a Base64-free manifest fo
 
 ## DATABASE / PRODUCTION BOUNDARY
 
-Production writes: **NO**.
+Production educational writes: **NO**. Schema writes: **YES - migration 004 only**; sign-in/out and security checks use the existing authentication controls.
 
 Production questions changed by this task: **NO**.
 
@@ -222,11 +222,11 @@ Production assets changed by this task: **NO**.
 
 Production curriculum changed: **NO**.
 
-Migration applied to production: **NO**.
+Migration applied to production: **YES - only 004, reviewed bytes preserved, verified pre-migration cloud copy retained**.
 
 Production environment/configuration changes: **NO**. Read-only public Production and Vercel project metadata audits: **YES**. Private database read-only connection: restored through existing authenticated WSL CLI.
 
-Migration 004 is present as a reviewable source file. It is required to represent actual whole-question solutions without fabricated parts, preserve ordered visual/text blocks as relational data, persist safe visual metadata, and provide atomic durable import receipts. It was exercised only by automatically created disposable test databases. It was not applied to the application's persistent local bank or any production database. Runtime schema checks require 004 before eventual rollout and never apply DDL; a separate reviewed rollout/backup procedure is still required. No migration solely for question provenance was added.
+Migration 004 is present as a reviewable source file. It is required to represent actual whole-question solutions without fabricated parts, preserve ordered visual/text blocks as relational data, persist safe visual metadata, and provide atomic durable import receipts. It was exercised by disposable SQLite/libSQL upgrade tests and then applied alone to Production through the guarded repository procedure after a verified cloud copy. Every original domain row and the existing draft fingerprint survived unchanged. Runtime schema checks require 004 and never apply DDL; no persistent local-bank migration was performed. No migration solely for question provenance was added.
 
 ## QUALITY
 
@@ -234,7 +234,7 @@ Migration 004 is present as a reviewable source file. It is required to represen
 |---|---|
 | npm run typecheck | PASS |
 | npm run lint | PASS |
-| npm test | PASS — 180 tests (baseline 126, +54) |
+| npm test | PASS - 184 unit/integration tests (postmigration release gate) |
 | npm run db:check | PASS |
 | npm run schema:check | PASS |
 | npm run api:check | PASS |
@@ -303,19 +303,19 @@ The pre-existing untracked `FIRST_PRODUCTION_QUESTION_PILOT_REPORT.md` was left 
 
 ## SOURCE CONTROL
 
-Commit: **pending release gate**.
+Commit: **`0fc2958589cac88b45181f916684ac60231459b5` — Add self-contained question JSON importer**.
 
-Push: **pending release gate**.
+Push: **PASS — normal feat/admin-security push, origin aligned**.
 
-Deployment: **pending exact-commit hosted verification**.
+Deployment: **PASS — protected Preview and Production verified at `0fc2958589cac88b45181f916684ac60231459b5`**.
 
 Production Vercel/environment changes: **NO**.
 
 ## FINAL STATUS
 
-**PRODUCTION MIGRATION VERIFIED — APPLICATION RELEASE PENDING**.
+**QUESTION JSON IMPORTER DEPLOYED — EXISTING DRAFT PRESERVED**.
 
-The revised authorized baseline contains one legitimate Production draft. A fresh cloud copy was independently verified and retained, migration 004 alone was applied, and every existing domain row and the draft fingerprint were preserved. Application release proceeds only after final quality, source-control and protected Preview/security gates. Question imports and review of the existing draft remain outside this rollout.
+The revised authorized baseline contains one legitimate Production draft. A fresh cloud copy was independently verified and retained, migration 004 alone was applied, and every existing domain row and the draft fingerprint were preserved. Application release passed final quality, source-control and protected Preview/security gates and is deployed at the verified commit. Question imports and review of the existing draft remain outside this rollout.
 
 
 ## Final provenance and rollout review
@@ -324,6 +324,8 @@ Question-level source fields: **NO**. Per-asset PDF page/region provenance retai
 
 The two populated schema-003 upgrade tests execute final migration 004 using SQLite and libSQL adapters, preserve nested parts, schemes, steps, hints, existing asset references, two immutable revisions/classifications, a pending review, tags/search and hierarchy IDs, and successfully import a new no-part draft afterward. Foreign-key and integrity checks pass. Migrations 001/002/003 remain unchanged; no migration 005 was created.
 
-Future syllabus compatibility gate: **PASS ? no new material coupling introduced by importer/migration 004**. Existing single-topic limitations and the ordered implementation plan are documented in `SYLLABUS_VERSION_REUSE_AUDIT.md`. No future-syllabus implementation was performed.
+Future syllabus compatibility gate: **PASS - no new material coupling introduced by importer/migration 004**. Existing single-topic limitations and the ordered implementation plan are documented in `SYLLABUS_VERSION_REUSE_AUDIT.md`. No future-syllabus implementation was performed.
 
 Production migration status: **PASS — existing draft preserved**. Revised baseline: questions 1, draft 1, approved 0, assets 0, hierarchy 2/18/82/0, events 3. Migrations now 001/002/003/004; FK/integrity pass. Complete educational content fingerprint and all original rows are unchanged. Fresh verified backup retained. Postmigration release checks passed 184 unit/integration tests; all 49 browser tests also passed (exit 0). No question/import/Blob/curriculum write was performed. See `QUESTION_JSON_IMPORT_PRODUCTION_ROLLOUT_REPORT.md` for current release gates and sanitized preservation evidence.
+
+Current release: **PASS**. All required postmigration checks passed, including 184 unit/integration and 49 browser tests. Commit `0fc2958589cac88b45181f916684ac60231459b5` is pushed normally and deployed to Production after exact-commit protected Preview/authentication/CSRF/read-only validation gates. All nine served JS/CSS bundles equal the tested local build. Production health is HTTP 200; authenticated importer route and security checks pass. The final private audit preserves every original domain row and the single draft fingerprint, assets 0, events 3, migrations 001/002/003/004. Verified backup retained. No question/import/Blob/curriculum mutation occurred. The in-app browser was unavailable; hosted checks used read-only HTTP/static-bundle verification plus the identical disposable browser suite. Final status/report documentation updates remain local after the application commit. See `QUESTION_JSON_IMPORT_PRODUCTION_ROLLOUT_REPORT.md`. Rollout is complete; no next question task was started.
