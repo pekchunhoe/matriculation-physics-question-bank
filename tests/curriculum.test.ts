@@ -544,7 +544,7 @@ test('Migration 002 upgrades populated v1 data without rewriting authored rows, 
       await upgraded.close();
     }
     const reopened = await createTestBank(path);
-    assert.equal((await reopened.all('SELECT * FROM schema_migrations')).length, 3);
+    assert.equal((await reopened.all('SELECT * FROM schema_migrations')).length, 4);
     await reopened.close();
   } finally {
     await source.close();

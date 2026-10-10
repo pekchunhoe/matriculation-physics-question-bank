@@ -4,6 +4,7 @@ import type { Difference } from '../server/revisions';
 import { api, json, download } from './api';
 import { Field, QuestionMetadata, type LoadedQuestion } from './components';
 import { Equation, MathText } from './MathText';
+import type { ContentBlock } from '../shared/content';
 import { useAuth } from './Auth';
 
 function Assets({ items }: { items: Asset[] }) {
@@ -20,7 +21,7 @@ function Assets({ items }: { items: Asset[] }) {
             <figure key={a.id}>
               <img src={a.url} alt={a.alt} loading="lazy" />
               <figcaption>
-                {a.alt}
+                {a.importMetadata?.caption ?? a.alt}
                 {a.kind === 'answer_diagram' ? ' · Answer diagram' : ''}
               </figcaption>
             </figure>
@@ -29,14 +30,33 @@ function Assets({ items }: { items: Asset[] }) {
     </div>
   );
 }
+function Blocks({ blocks, assets }: { blocks?: ContentBlock[]; assets: Asset[] }) {
+  return (
+    <>
+      {blocks?.map((b, i) => (
+        <div key={i}>
+          {b.type === 'paragraph' ? (
+            <MathText value={b.text} />
+          ) : b.type === 'math' ? (
+            <Equation value={b.latex} />
+          ) : (
+            <Assets items={assets.filter((a) => a.id === b.assetId)} />
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
 export function ContentPreview({
   doc,
   teacher,
   print = false,
+  showHints = true,
 }: {
   doc: QuestionDocument;
   teacher: boolean;
   print?: boolean;
+  showHints?: boolean;
 }) {
   const [revealed, setRevealed] = useState<Record<string, number>>({});
   useEffect(() => setRevealed({}), [doc, teacher]);
@@ -44,7 +64,7 @@ export function ContentPreview({
     const items = doc.hints.filter((h) => h.partId === partId).sort((a, b) => a.order - b.order),
       key = partId ?? 'whole',
       count = revealed[key] ?? 0;
-    if (!items.length) return null;
+    if (!showHints || !items.length) return null;
     return (
       <div className="hint-block">
         <h3>Student hints</h3>
@@ -65,8 +85,16 @@ export function ContentPreview({
       </div>
     );
   };
+  const placed = new Set(
+    [
+      doc.question.blocks,
+      ...doc.parts.map((p) => p.blocks),
+      ...doc.solutions.flatMap((s) => [s.blocks, ...s.steps.map((t) => t.blocks)]),
+    ].flatMap((blocks) => (blocks ?? []).flatMap((b) => (b.type === 'image' ? [b.assetId] : []))),
+  );
+  const unplacedAssets = doc.assets.filter((a) => !placed.has(a.id));
   const visibleAssets = (partId: string | null) =>
-    doc.assets.filter(
+    unplacedAssets.filter(
       (a) =>
         a.partId === partId &&
         (teacher || !['answer_diagram', 'answer_pdf', 'original_pdf'].includes(a.kind)),
@@ -82,6 +110,7 @@ export function ContentPreview({
             <span>{p.marks} marks</span>
           </div>
           <MathText value={p.prompt} />
+          <Blocks blocks={p.blocks} assets={doc.assets} />
           <Assets
             items={visibleAssets(p.id).filter(
               (a) => !['answer_diagram', 'answer_pdf'].includes(a.kind),
@@ -102,6 +131,7 @@ export function ContentPreview({
         </div>
         <h2>{doc.question.title}</h2>
         <MathText value={doc.question.scenario} />
+        <Blocks blocks={doc.question.blocks} assets={doc.assets} />
         <Assets
           items={visibleAssets(null).filter(
             (a) =>
@@ -122,10 +152,15 @@ export function ContentPreview({
                 (doc.parts.find((p) => p.id === b.partId)?.order ?? 0),
             )
             .map((s) => (
-              <section key={s.partId} className="solution">
-                <h3>Part {doc.parts.find((p) => p.id === s.partId)?.label}</h3>
+              <section key={s.partId ?? 'whole'} className="solution">
+                <h3>
+                  {s.partId === null
+                    ? 'Worked answer'
+                    : 'Part ' + doc.parts.find((p) => p.id === s.partId)?.label}
+                </h3>
                 <MathText value={s.solution} />
                 <Equation value={s.equationLatex} />
+                <Blocks blocks={s.blocks} assets={doc.assets} />
                 {[...s.steps]
                   .sort((a, b) => a.order - b.order)
                   .map((step) => (
@@ -137,6 +172,7 @@ export function ContentPreview({
                       <MathText value={step.explanation} />
                       <Equation value={step.equationLatex} />
                       <MathText value={step.working} />
+                      <Blocks blocks={step.blocks} assets={doc.assets} />
                       {step.markingPoint && (
                         <p>
                           <strong>Marking point: </strong>
@@ -152,7 +188,7 @@ export function ContentPreview({
                   </div>
                 )}
                 <Assets
-                  items={doc.assets.filter(
+                  items={unplacedAssets.filter(
                     (a) =>
                       a.partId === s.partId && ['answer_diagram', 'answer_pdf'].includes(a.kind),
                   )}
@@ -160,7 +196,7 @@ export function ContentPreview({
               </section>
             ))}
           <Assets
-            items={doc.assets.filter(
+            items={unplacedAssets.filter(
               (a) => a.partId === null && ['answer_diagram', 'answer_pdf'].includes(a.kind),
             )}
           />
@@ -168,7 +204,7 @@ export function ContentPreview({
       )}
       {teacher && (
         <Assets
-          items={doc.assets.filter(
+          items={unplacedAssets.filter(
             (a) =>
               a.partId !== null &&
               ['answer_diagram', 'answer_pdf'].includes(a.kind) &&
@@ -177,7 +213,7 @@ export function ContentPreview({
         />
       )}
       <Assets
-        items={doc.assets.filter(
+        items={unplacedAssets.filter(
           (a) =>
             a.partId === null &&
             (a.kind === 'question_pdf' || (teacher && a.kind === 'original_pdf')),

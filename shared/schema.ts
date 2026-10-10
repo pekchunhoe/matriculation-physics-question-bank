@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import katex from 'katex';
+import { math as latex, prose, blocksSchema, visualMetadataSchema } from './content.js';
 import { assetKinds } from './model.js';
 export { assetKinds, warnings } from './model.js';
 import { assetKeyFromReference } from './asset-reference.js';
@@ -7,34 +7,24 @@ import { assetKeyFromReference } from './asset-reference.js';
 const text = z.string().max(30000);
 const id = z.string().min(1).max(120);
 const marks = z.number().int().min(0).max(10000);
-const latex = text.superRefine((value, ctx) => {
-  try {
-    if (value) katex.renderToString(value, { throwOnError: true, trust: false });
-  } catch {
-    ctx.addIssue({ code: 'custom', message: 'Invalid LaTeX equation' });
-  }
-});
-const prose = text.superRefine((value, ctx) => {
-  for (const match of value.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g)) {
-    try {
-      katex.renderToString(match[1] ?? match[2], { throwOnError: true, trust: false });
-    } catch {
-      ctx.addIssue({ code: 'custom', message: 'Invalid LaTeX in text' });
-    }
-  }
-});
 export const partSchema = z
   .object({
     id,
     label: id,
-    prompt: prose.refine((v) => Boolean(v.trim()), 'Part prompt is required'),
+    prompt: prose,
     marks,
     order: z.number().int().min(0),
     parentId: id.nullable(),
+    blocks: blocksSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((p) => Boolean(p.prompt.trim() || p.blocks?.length), {
+    path: ['prompt'],
+    message: 'Part prompt or content blocks are required',
+  });
 export const stepSchema = z
   .object({
+    blocks: blocksSchema.optional(),
     number: z.number().int().positive(),
     explanation: prose,
     equationLatex: latex,
@@ -46,7 +36,8 @@ export const stepSchema = z
   .strict();
 export const solutionSchema = z
   .object({
-    partId: id,
+    partId: id.nullable(),
+    blocks: blocksSchema.optional(),
     solution: prose,
     equationLatex: latex,
     teacherNotes: prose,
@@ -66,6 +57,7 @@ export const assetSchema = z
     id,
     partId: id.nullable(),
     kind: z.enum(assetKinds),
+    importMetadata: visualMetadataSchema.optional(),
     url: z
       .string()
       .max(2000)
@@ -84,7 +76,7 @@ export const assetSchema = z
           return false;
         }
       }, 'Use an uploaded file or HTTPS URL'),
-    alt: z.string().min(1).max(1000),
+    alt: z.string().max(1000),
     mime: z.enum(['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'application/pdf']),
     order: z.number().int().min(0),
   })
@@ -99,6 +91,7 @@ export const documentSchema = z
         subtopicId: id.nullable(),
         title: z.string().min(1).max(300),
         scenario: prose,
+        blocks: blocksSchema.optional(),
         difficultyId: id,
         questionType: z.enum(['structured', 'multiple_choice', 'short_answer', 'essay']),
         totalMarks: marks.refine((n) => n > 0, 'Total marks must be positive'),
@@ -109,7 +102,7 @@ export const documentSchema = z
         containsFbd: z.boolean(),
       })
       .strict(),
-    parts: z.array(partSchema).min(1).max(100),
+    parts: z.array(partSchema).max(100),
     solutions: z.array(solutionSchema).max(100),
     hints: z.array(hintSchema).max(100),
     assets: z.array(assetSchema).max(100),
@@ -136,10 +129,21 @@ export const documentSchema = z
     if (new Set(doc.solutions.map((s) => s.partId)).size !== doc.solutions.length)
       fail('Only one answer scheme per part is allowed');
     for (const s of doc.solutions) {
-      if (!ids.has(s.partId)) fail('Solution references unknown part');
+      if (s.partId !== null && !ids.has(s.partId)) fail('Solution references unknown part');
       if (new Set(s.steps.map((t) => t.number)).size !== s.steps.length)
         fail('Step numbers must be unique within a solution');
     }
+    if (doc.parts.length && doc.solutions.some((s) => s.partId === null))
+      fail('Whole-question solutions require a no-part question');
+    const blockOwners = [
+      doc.question.blocks,
+      ...doc.parts.map((p) => p.blocks),
+      ...doc.solutions.flatMap((s) => [s.blocks, ...s.steps.map((t) => t.blocks)]),
+    ];
+    for (const blocks of blockOwners)
+      for (const block of blocks ?? [])
+        if (block.type === 'image' && !doc.assets.some((a) => a.id === block.assetId))
+          fail('Content block references unknown asset');
     for (const entry of [...doc.hints, ...doc.assets])
       if (entry.partId && !ids.has(entry.partId)) fail('Hint or asset references unknown part');
     for (const list of [doc.hints, doc.assets])
@@ -150,11 +154,17 @@ export const documentSchema = z
         fail('Asset kind and MIME type disagree');
     if (
       doc.question.status === 'approved' &&
-      doc.parts.some(
-        (p) =>
-          !doc.parts.some((child) => child.parentId === p.id) &&
-          !doc.solutions.some((s) => s.partId === p.id && (s.solution.trim() || s.steps.length)),
-      )
+      ((!doc.parts.length &&
+        !doc.solutions.some(
+          (s) => s.partId === null && (s.solution.trim() || s.blocks?.length || s.steps.length),
+        )) ||
+        doc.parts.some(
+          (p) =>
+            !doc.parts.some((child) => child.parentId === p.id) &&
+            !doc.solutions.some(
+              (s) => s.partId === p.id && (s.solution.trim() || s.blocks?.length || s.steps.length),
+            ),
+        ))
     )
       fail('Approved questions require an answer scheme for every leaf part');
   });

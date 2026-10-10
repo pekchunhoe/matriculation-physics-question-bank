@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "kind": "matriculation-physics-question",
+  "classification": {
+    "curriculumVersionCode": "PHYSICS-2022-2023",
+    "semester": "Semester 1",
+    "chapter": "1.0 Physical Quantities and Measurements",
+    "topic": "1.1 Dimensions of physical quantities",
+    "subtopic": null
+  },
+  "difficulty": "Easy",
+  "question": {
+    "title": "Dimensional analysis",
+    "scenario": "By using dimensional analysis, show that the equation below is homogeneous.",
+    "blocks": [
+      {
+        "type": "math",
+        "latex": "KE = \\frac{1}{2}k\\left(A^2-y^2\\right)"
+      },
+      {
+        "type": "paragraph",
+        "text": "where $KE$ is kinetic energy, $k$ is spring constant, $A$ is amplitude and $y$ is displacement."
+      }
+    ],
+    "totalMarks": 2,
+    "estimatedMinutes": 4,
+    "questionType": "short_answer"
+  },
+  "parts": [],
+  "solutions": [
+    {
+      "partId": null,
+      "solution": "",
+      "equationLatex": "",
+      "teacherNotes": "",
+      "steps": [
+        {
+          "number": 1,
+          "explanation": "Use the dimensions of kinetic energy and spring constant.",
+          "equationLatex": "[KE] = ML^2T^{-2},\\qquad [k] = MT^{-2}",
+          "working": "",
+          "markingPoint": "Use the dimensions of kinetic energy and spring constant.",
+          "marks": 1,
+          "order": 0
+        },
+        {
+          "number": 2,
+          "explanation": "Squared lengths have dimensions of area; one half is dimensionless. Both sides have the same dimensions, so the equation is homogeneous.",
+          "equationLatex": "[A^2-y^2] = L^2,\\qquad \\left[\\frac12 k(A^2-y^2)\\right] = (MT^{-2})(L^2) = ML^2T^{-2}",
+          "working": "",
+          "markingPoint": "Squared lengths have dimensions of area; one half is dimensionless. Both sides have the same dimensions, so the equation is homogeneous.",
+          "marks": 1,
+          "order": 1
+        }
+      ]
+    }
+  ],
+  "hints": [
+    {
+      "id": "hint-1",
+      "partId": null,
+      "text": "Start by writing the base dimensions of kinetic energy.",
+      "order": 0
+    },
+    {
+      "id": "hint-2",
+      "partId": null,
+      "text": "Recall $F=kx$ to find the dimensions of the spring constant.",
+      "order": 1
+    },
+    {
+      "id": "hint-3",
+      "partId": null,
+      "text": "Amplitude and displacement are lengths. What are the dimensions of their squares?",
+      "order": 2
+    },
+    {
+      "id": "hint-4",
+      "partId": null,
+      "text": "Multiply the dimensions on the right-hand side and compare with those on the left; numerical constants are dimensionless.",
+      "order": 3
+    }
+  ],
+  "assets": [],
+  "tags": []
+}

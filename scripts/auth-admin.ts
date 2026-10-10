@@ -97,15 +97,23 @@ async function main() {
   }
   const adapter = local ? new SQLiteAdapter(resolve(local)) : TursoAdapter.fromEnvironment();
   const bank = new Bank(adapter);
+  const assertAuthSchema = async () => {
+    const versions = await bank.all('SELECT version FROM schema_migrations');
+    await assertCurrentSchema(adapter, versions.length === 4 ? 4 : 3);
+  };
   try {
     if (command === 'migrate') {
       const applied = (
         await bank.all('SELECT version FROM schema_migrations ORDER BY version')
       ).map((row) => row.version);
-      if (JSON.stringify(applied) !== '[1,2]' && JSON.stringify(applied) !== '[1,2,3]')
+      if (
+        JSON.stringify(applied) !== '[1,2]' &&
+        JSON.stringify(applied) !== '[1,2,3]' &&
+        JSON.stringify(applied) !== '[1,2,3,4]'
+      )
         throw new BankError('Auth migration requires the existing 001/002 baseline');
-      if (applied.length === 3) {
-        await assertCurrentSchema(adapter);
+      if (applied.length >= 3) {
+        await assertAuthSchema();
         console.log('Auth schema already current; no changes');
         return;
       }
@@ -116,17 +124,18 @@ async function main() {
         return;
       }
       await applyMigrations(adapter, {
+        throughVersion: 3,
         beforeMigration: async (version) => {
           if (version !== 3)
             throw new BankError('Only migration 003 is authorized by this command');
         },
       });
-      await assertCurrentSchema(adapter);
+      await assertAuthSchema();
       console.log(
-        'Migration 003 applied transactionally; complete runtime schema verified. No administrator created.',
+        'Migration 003 applied transactionally; auth schema verified (question import migration requires separate review). No administrator created.',
       );
     } else {
-      await assertCurrentSchema(adapter);
+      await assertAuthSchema();
       const email = normalizeEmail(value('--email'));
       if (command === 'bootstrap') {
         if (!args.includes('--create-first-admin'))

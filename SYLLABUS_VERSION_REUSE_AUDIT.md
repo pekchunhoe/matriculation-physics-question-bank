@@ -1,0 +1,106 @@
+# Future syllabus and question reuse audit
+
+Audited 10 October 2026. Scope: actual schema, services, validators, APIs, admin/public UI, exports, question sets, automated tests and read-only public Production. This is an audit and implementation plan only. No future syllabus feature, migration, mapping or Production curriculum change was implemented.
+
+## Executive finding
+
+The bank supports flexible version-specific hierarchies, draft/active/retired versions, hierarchy cloning with fresh IDs, stable question IDs, immutable question history, guarded taxonomy edits and historical browsing. It has no nine-item limit. These foundations do **not** provide automatic question reuse in a new syllabus.
+
+Each question currently has one `topic_id` and optional `subtopic_id`. Cloning creates an empty question classification context: it neither carries questions forward nor records an explicit old-to-new node correspondence. A question cannot currently be classified simultaneously under multiple topics or versions. Historical classification snapshots preserve what a revision was classified as, but are not independently editable, coexisting question-to-syllabus mappings.
+
+Automatic unchanged-topic carry-forward, semantic scope review, split/merge decisions, bulk remapping and a coverage dashboard require a separate implementation. Do not activate a cloned syllabus expecting its question bank to populate automatically. A future edition can keep the same questions and assets if classification becomes a many-to-many relationship attached to permanent question IDs.
+
+## Evidence and capability classification
+
+SUPPORTED means the capability exists and has relevant executed evidence. PARTIAL means foundations exist but the full desired workflow does not. MISSING means the inspected implementation lacks the required workflow. UNVERIFIED means evidence/access was insufficient; it does not mean supported. Live evidence here is public read-only; private schema/data/migration audits remain UNVERIFIED.
+
+| Capability | Status | Database | API/service | UI | Executed tests / live evidence |
+|---|---|---|---|---|---|
+| A Flexible counts | SUPPORTED | Hierarchical tables, no nine-count constraint | Generic plan/import/add; 10,000-node import bound | Data-driven lists and parent selectors | Audit fixture 9/9 then 10/12; live active 2/18/82/0 |
+| B Multiple versions/lifecycle | SUPPORTED | `curriculum_versions`, semester version membership, stable descendants | create/export/edit/import, transactional activation | Version creation, clone, lifecycle and history | Curriculum lifecycle tests; live PHYSICS active, LEGACY retired |
+| C Clone with explicit correspondence | PARTIAL | Fresh hierarchy IDs; no correspondence relation | `createVersion(cloneFromId)` exports and assigns UUIDs | Clone source selector exists | Clone tests confirm new IDs and zero carried questions; no correspondence returned or retained |
+| D Content identity separate from classification | PARTIAL | Stable question UUID, assets/revisions keyed to question; single topic in question row | Save/review preserves UUID but classification edit creates content revision | Editor selects one topic/subtopic | Stable/history tests pass; classification independence missing |
+| E Many-to-many topic/version mappings | MISSING | No question-topic/version junction | No multi-mapping mutation | No multi-topic editor | `topicIds` rejected by strict document schema |
+| F Coexisting historical mappings | PARTIAL | Immutable classification snapshots per content revision | Saved classification/history readable | Historical curriculum and question history | Snapshot preservation passes; independent simultaneous mappings absent |
+| G Unchanged carry-forward via confirmed correspondence | MISSING | No correspondence or mapping job records | Clone copies hierarchy only | No carry-forward preview/confirmation | New version has zero questions in executed audit |
+| H Confirmed rename/renumber with unchanged scope | PARTIAL | Stable taxonomy IDs, names and `sort_order`; immutable old names | Revision/impact guards; no scope-equivalence approval | Name/order/impact confirmation | Rename/order tests pass; semantic equivalence not captured |
+| I Scope-change metadata/review queue | MISSING | No scope-change or mapping-review records | No syllabus coverage review workflow | Revision queue concerns content, not scope mapping | Two changed labels import structurally only |
+| J Split to one/both/neither | MISSING | Single current topic | No split correspondence/mapping API | No split review | Not executable as reuse workflow |
+| K Merge with approved correspondence | MISSING | No merge edges/approval | No merge mapping workflow | No merge review | Not executable as reuse workflow |
+| L Removal preserves old questions and new review | PARTIAL | Retire guards preserve referenced nodes/content/history | Retirement supported; no new-version disposition | Retire/restore supported | Retirement preserves content; target-version review missing |
+| M Semester move with old mappings retained | PARTIAL | Version IDs stable; referenced and cross-version moves guarded | Empty same-version move works; new-version reuse absent | Parent move with impact, clone guidance | Empty move passes; referenced/cross-version move rejected |
+| N Arbitrary subtopics | SUPPORTED | Generic topic children | Up to 1,000 children per import array, 10,000 total nodes | Generic subtopic selectors/editor | Twelve subtopics executed; no nine bound |
+| O Bulk remapping preview/multiple topics/remove only target | MISSING | No mappings/jobs | No bulk remap endpoint | No bulk remap page | Not executable |
+| P Pre-activation coverage dashboard | MISSING | Impact counts only | Impact does not compute carried/split/merge/unmapped coverage | Basic impact confirmation only | Activation may publish an empty new version |
+| Q Active/historical public filters/counts/search/sets/print | PARTIAL | Existing current-topic joins and FTS | Draft exclusion; published active/retired browsing | Default active; historical selector; data-driven hierarchy | Public/browser/security tests pass; same-question multi-version browsing absent |
+| R Version-specific sets/exports | PARTIAL | Version snapshots exist; no saved set context | v2 export has one saved classification; set takes IDs/options only | Set selection carries no syllabus context | Ordered print tests pass; cross-version mapping semantics absent |
+| S Server-side admin authorization | SUPPORTED | Durable admins/sessions/rate limits | Non-read API requests require admin and CSRF before body/storage work | Admin authoring routes and controls | Anonymous mutation/read guards and authenticated paths tested; live authenticated UI UNVERIFIED |
+| T Atomic activation/retry/recovery | PARTIAL | Transaction retires old active and activates new; unique-active index | Impact/revision stale guard, transaction rollback | Impact confirmation | Activation/stale tests pass; no operation receipt/coverage gate/recovery dashboard |
+
+Primary sources: `server/migrations/001-foundation.sql`, `002-curriculum.sql`, `003-admin-auth.sql`; `server/curriculum.ts` (`createVersion`, `editVersion`, `plan`, `import`, `edit`, `classification`, `impact`); `server/database.ts` (`save`, `review`, `versions`, `savedClassification`, `list`, `counts`); `shared/curriculum.ts`; `shared/schema.ts`; `server/app.ts`; `server/visibility.ts`; `server/public-visibility-policy.ts`; `src/Curriculum.tsx`, `CurriculumTools.tsx`, `Browser.tsx`, `PublicCurriculum.tsx`, `Editor.tsx`, `QuestionSet.tsx`; `tests/curriculum.test.ts`, `auth.test.ts`, `turso.test.ts`, `syllabus-reuse-audit.test.ts` and browser curriculum/auth/presentation specs.
+
+## Current administrator workflow
+
+An authenticated administrator opens the curriculum page, creates a draft version with a course, code, name, dates and ordering, optionally selects a clone source, or validates and imports hierarchy JSON. Cloning assigns new IDs to semesters, chapters, topics and subtopics and leaves the source hierarchy untouched. There is no saved pairing between those old and new IDs. The import event retains the new document, not an equivalence decision for each source node.
+
+The administrator can add children, rename, reorder, retire or restore taxonomy. An impact preview shows current questions, historical references, pending revisions and descendant counts; writes require current revision/impact token and confirmation when referenced. Referenced subtrees cannot be moved, and cross-version reparenting is blocked. Empty subtrees may move within their version.
+
+A question can be reassigned individually through the editor's single topic/subtopic selection. Saving an approved question produces a content revision candidate requiring named review. This preserves the question ID and old snapshot but replaces the current classification after approval; it is not simultaneous reuse in both editions. Content editing and classification maintenance are coupled in this workflow.
+
+Activation atomically retires the previous active edition for the course and activates the selected edition. It does not require mapping completeness, transfer questions, or classify unchanged versus changed scope. A clone with no questions can be activated after confirmation. Retry with an old revision/impact is rejected; no dedicated idempotent activation receipt exists. After an uncertain response, reload version state and impact before a deliberate retry.
+
+## Hard-coded assumptions and public behavior
+
+Searches across `src`, `server`, `shared` and `scripts` found no nine-topic/chapter limit, fixed nine-button UI, SP015/SP025 global semester mapping or fixed syllabus topic arrays in runtime code. Digit `9` in identifier regular expressions is not a count restriction. Foundation seed semester IDs are existing baseline identities; future version IDs are distinct. Current stored syllabus identifiers may contain SP015/SP025, but matching/filtering uses actual IDs and version ancestry, not a universal semester-to-course-code rule.
+
+The importer deliberately accepts permanent display names `Semester 1` and `Semester 2` and resolves the selected curriculum code and exact hierarchy names to IDs. Syllabus course codes remain version-specific. Generic curriculum tools currently allow semester renaming; they do not enforce the user's permanent-name policy. Keep those display names by operational policy now; enforce immutable logical semester identities in the later syllabus design without changing historical names or IDs.
+
+`shared/curriculum.ts` permits 100 semesters and 1,000 child nodes per array; the service caps an import at 10,000 records. These are generic resource bounds, not nine-item assumptions. Normal hierarchy addition has no count-of-nine rule. Stored order determines rendering; numeric prefixes are part of editable names rather than permanent identity.
+
+Public UI defaults to active curriculum and provides historical disclosure/selection. API visibility allows active and retired curriculum but excludes draft versions and non-approved questions. Filtering, counts and search use a question's current topic ancestry. Selecting several topic filters means a union of matching single-topic questions; it does not establish multi-topic classification. Old content classification snapshots do not automatically make a currently reassigned question browseable under its old mapping.
+
+Question-set selection stores question IDs and answer/hint options; the endpoint returns current approved snapshots in requested order. It has no selected curriculum/version mapping parameter and may mix IDs from different published curricula. JSON v2 export retains one saved classification. Reproducible syllabus-specific sets and multi-mapping export semantics need a later contract.
+
+## Executed checks versus proposed acceptance tests
+
+The disposable audit fixture executes 9/9 topics, then 10/12 with two changed labels, unequal semester counts, twelve subtopics, cloning with fresh IDs, empty target question coverage, multi-topic rejection and unchanged question document/history/classification/ID. It proves structural flexibility and current limitations. It does not prove that the two changed topics were semantically reviewed or that unchanged questions were carried forward.
+
+Existing executed curriculum tests cover guarded rename of every hierarchy level, stored reorder, retirement/restore, empty same-version moves, rejection of referenced/cross-version moves, references held only by older history/pending candidates, stale plans, clone/activation/history queries, immutable classification exports and unauthorized mutations. Importer tests preserve solution/hint/assets/content and reject invalid classifications. Populated migration tests run SQLite and libSQL schema 003 to 004, preserving nested parts, steps, hints, assets, two immutable revisions/classifications, a pending candidate, tags and search; a new no-part draft imports afterward.
+
+The following desired end-to-end reuse workflows are **NOT EXECUTABLE** today: confirmed unchanged carry-forward; scope-only rename/renumber equivalence; split to A1/A2/both/neither; merge with approved edges; removed-topic target review; cross-version semester moves with both mappings; simultaneous same-version/across-version multi-topic mapping; bulk target-only removal; coverage-gated activation; reproducible version-bound set export. No claim that these passed is made. Building their destination taxonomy alone is not testing their reuse semantics.
+
+Live public read-only audit at 2026-10-10T09:24:32Z: health/taxonomy/questions/counts HTTP 200; PHYSICS-2022-2023 active, LEGACY retired; active hierarchy 2 semesters / 18 chapters / 82 topics / 0 subtopics; public question total zero and all public counts zero. Private question/assets totals, database schema/history fingerprints and authenticated admin UI are UNVERIFIED in this environment. Sanitized evidence is in ignored `data/question-import-rollout/public-provider-audit.json`; previous reports are historical evidence, not a substitute for current private verification.
+
+## Importer compatibility gate
+
+**PASS: no new material conflict found.** Migration 004 modifies solution support and adds canonical visual metadata, ordered content blocks and import receipts. None of these references taxonomy or encodes SP015/SP025. Content/asset/receipt ownership uses stable question IDs; generated question codes use UUIDs rather than topic paths. No taxonomy/history remapping or duplication is introduced. Existing `questions.topic_id` and snapshots remain a known single-topic baseline limitation; the importer uses that baseline rather than adding a new permanent classification constraint.
+
+A future mapping migration can backfill the initial classification from the question's existing topic and ancestry without copying question content, hints, solutions, assets or revisions. Classification inside immutable old documents must be interpreted as a legacy captured context, not overwritten. Future readers/exporters must explicitly select mapping context instead of treating that captured field as the only current truth. The import format can later evolve to permit multiple initial mappings while keeping schema-v1 import semantics and question identity intact.
+
+## Feasible implementation plan — not implemented
+
+1. Agree on scope definitions, permanent semester identity, whether a cross-edition mapping means full or partial topic coverage, review ownership, required exceptions before activation and set/export behavior. Keep content revisions distinct from classification changes.
+2. Add a dedicated later migration with a question-to-version/topic/subtopic mapping relation, unique mapping keys and validated topic/version ancestry. Preserve permanent question IDs and every content/asset/history FK. Backfill one initial mapping per existing current question, with provenance identifying the legacy backfill. Preserve immutable classification snapshots separately. Retain old columns during compatibility rollout; compare old/new counts and identifiers before readers switch.
+3. Add explicit correspondence edges/groups for unchanged, renamed, renumbered, scope-changed, split, merged, removed and semester-moved nodes. Store source/target version and node IDs, decision status, scope explanation, reviewer, timestamps and audit history. Do not derive approval from labels, slugs, positions or fuzzy names. Clone returns and persists the old/new ID map transactionally; matching names may suggest a candidate but cannot authorize reuse.
+4. Add per-question target-version coverage/review state, including intentionally unmapped/neither decisions with reasons. Confirmed unchanged/rename/renumber edges may carry mappings forward to the same question ID. Scope change queues review. Split review selects one/both/neither; merge can retain existing questions under the merged target without duplicating them. Removed topics retain all old mappings/content and require a target disposition. Semester moves create new-version mappings and retain old ones.
+5. Add admin-only bulk preview/apply APIs and UI with stable manifests, source/target revision hashes, idempotent operation IDs and explicit decision receipts. Each bounded batch atomically applies mappings and its progress ledger. Resume reads receipts instead of repeating writes; conflicting reuse of a key fails. Reject stale correspondence/content/mapping inputs and show which questions require revalidation.
+6. Add the coverage dashboard: unique questions carried, reviewed, pending, unmapped, split, merged, removed and moved, with drill-down and approved exceptions. Do not sum mapping rows as unique question totals. Activation requires completed/approved coverage under the agreed rules and current expected version revisions.
+7. Make public/admin list/count/search/topic filters mapping-aware, deduplicating questions across multiple selected topics. Default active and explicit historical contexts must use the same mapping predicate. Reindex/contextualize taxonomy search without modifying question educational content. Persist selected curriculum version and mapping/content revision context in sets and exports; define whether snapshots freeze content or resolve latest approved content.
+8. Activate in one transaction with old/new version checks, coverage digest and an operation receipt. After transport uncertainty, query the receipt/state before retry. Roll back failed batches transactionally; compensating a completed job removes/deactivates only mappings owned by that job in the target edition, records the reversal and preserves old mappings/history. No question/asset deletion. Provide recovery UI for partial jobs and keep failed/unreviewed targets draft. Reverting activation restores the recorded previous active version atomically after validating no intervening activation; historical mappings remain preserved.
+9. Test preservation with a populated disposable clone: 9→10 with two scope changes, 12/8 and 10/9, rename/renumber, split all choices, many-to-one merge, removal, semester move, >9 subtopics, multiple mappings within/across editions, target-only removal, immutable history, same permanent question IDs, exact solution/hint/asset bytes, distinct counts, sets/export context, unauthorized/CSRF rejection, stale writes, retry, injected batch/activation failure and recovery. Compare full semantic domain fingerprints before/after. Then stage a separate reviewed migration/deployment with verified backups; no such change belongs to this importer rollout.
+
+Risks: empty cloned versions can currently be activated; destructive moves are correctly blocked but do not solve reuse; classification-only changes currently require content review; legacy snapshots embed one classification; counts/search/exports must migrate together; duplicate mapping rows can inflate counts; unconfirmed correspondence can silently misclassify unchanged-looking topics. None justifies copying educational content or rewriting history.
+
+## Plain-language answers
+
+Can a future syllabus have more than nine topics? **Yes.** Ten, twelve and more than nine subtopics work structurally, with generic resource limits.
+
+Will unchanged questions automatically appear after cloning a new syllabus? **No.** Explicit correspondence and mapping carry-forward must be built.
+
+Can one question currently belong to several topics/versions at once? **No.** The current question row has one topic; historical snapshots are not simultaneous mappings.
+
+Can old questions, answers, hints, diagrams and revisions be preserved? **Yes.** Keep the permanent question ID and add classification mappings; do not copy or rewrite the content.
+
+What needs a human decision? Confirm unchanged scope; approve rename/renumber equivalence, changed scope, split/merge/removal/move outcomes, intentionally unmapped questions and any activation exceptions. Review coverage before activation.
+
+What should be built next? Explicit correspondence, independent many-to-many mappings, coverage review, bulk preview/retry/recovery and version-aware public sets/exports. This task implements none of them.

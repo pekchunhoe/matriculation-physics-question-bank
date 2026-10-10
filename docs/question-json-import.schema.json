@@ -1,0 +1,642 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "kind": {
+      "type": "string",
+      "const": "matriculation-physics-question"
+    },
+    "classification": {
+      "type": "object",
+      "properties": {
+        "curriculumVersionCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "semester": {
+          "type": "string",
+          "enum": [
+            "Semester 1",
+            "Semester 2"
+          ]
+        },
+        "chapter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subtopic": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "curriculumVersionCode",
+        "semester",
+        "chapter",
+        "topic",
+        "subtopic"
+      ],
+      "additionalProperties": false
+    },
+    "difficulty": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "question": {
+      "type": "object",
+      "properties": {
+        "questionCode": {
+          "type": "string",
+          "pattern": "^[A-Z0-9][A-Z0-9-]{2,79}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "scenario": {
+          "type": "string",
+          "maxLength": 30000
+        },
+        "blocks": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "paragraph"
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 30000
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "math"
+                  },
+                  "latex": {
+                    "type": "string",
+                    "maxLength": 30000
+                  }
+                },
+                "required": [
+                  "type",
+                  "latex"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "image"
+                  },
+                  "assetId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "type",
+                  "assetId"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "totalMarks": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "estimatedMinutes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "questionType": {
+          "type": "string",
+          "enum": [
+            "structured",
+            "multiple_choice",
+            "short_answer",
+            "essay"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "scenario",
+        "totalMarks",
+        "estimatedMinutes",
+        "questionType"
+      ],
+      "additionalProperties": false
+    },
+    "parts": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 30000
+          },
+          "marks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocks": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "paragraph"
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 30000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "math"
+                    },
+                    "latex": {
+                      "type": "string",
+                      "maxLength": 30000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "latex"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "image"
+                    },
+                    "assetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "assetId"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "prompt",
+          "marks",
+          "order",
+          "parentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "solutions": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "partId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocks": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "paragraph"
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 30000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "math"
+                    },
+                    "latex": {
+                      "type": "string",
+                      "maxLength": 30000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "latex"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "image"
+                    },
+                    "assetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "assetId"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "solution": {
+            "type": "string",
+            "maxLength": 30000
+          },
+          "equationLatex": {
+            "type": "string",
+            "maxLength": 30000
+          },
+          "teacherNotes": {
+            "type": "string",
+            "maxLength": 30000
+          },
+          "steps": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "blocks": {
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "paragraph"
+                          },
+                          "text": {
+                            "type": "string",
+                            "maxLength": 30000
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "math"
+                          },
+                          "latex": {
+                            "type": "string",
+                            "maxLength": 30000
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "latex"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "image"
+                          },
+                          "assetId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "assetId"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "number": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "explanation": {
+                  "type": "string",
+                  "maxLength": 30000
+                },
+                "equationLatex": {
+                  "type": "string",
+                  "maxLength": 30000
+                },
+                "working": {
+                  "type": "string",
+                  "maxLength": 30000
+                },
+                "markingPoint": {
+                  "type": "string",
+                  "maxLength": 30000
+                },
+                "marks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "order": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "number",
+                "explanation",
+                "equationLatex",
+                "working",
+                "markingPoint",
+                "marks",
+                "order"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "partId",
+          "solution",
+          "equationLatex",
+          "teacherNotes",
+          "steps"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "hints": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "partId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 30000
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "partId",
+          "text",
+          "order"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tags": {
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "assets": {
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "question_diagram",
+              "answer_diagram",
+              "free_body_diagram",
+              "graph",
+              "circuit_diagram",
+              "table_image",
+              "other_visual"
+            ]
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "byteLength": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 3145728
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/svg+xml"
+            ]
+          },
+          "alt": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "dataBase64": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 4194304,
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          }
+        },
+        "required": [
+          "role",
+          "sha256",
+          "byteLength",
+          "key",
+          "mimeType",
+          "dataBase64"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "classification",
+    "difficulty",
+    "question",
+    "parts",
+    "solutions",
+    "hints",
+    "tags",
+    "assets"
+  ],
+  "additionalProperties": false,
+  "$id": "urn:matriculation-physics:question-package:1",
+  "title": "Self-contained question package v1",
+  "description": "Runtime validation additionally enforces database relationships, duplicates, effective dates, LaTeX and lifecycle rules."
+}

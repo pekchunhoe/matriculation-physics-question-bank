@@ -480,9 +480,10 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                 <legend>Solution {i + 1}</legend>
                 <Field label="Question part">
                   <select
-                    value={s.partId}
-                    onChange={(e) => editSolution(i, { partId: e.target.value })}
+                    value={s.partId ?? ''}
+                    onChange={(e) => editSolution(i, { partId: e.target.value || null })}
                   >
+                    {!doc.parts.length && <option value="">Whole question</option>}
                     {partChoices}
                   </select>
                 </Field>

@@ -390,7 +390,7 @@ test('Migration is repeatable and stored records survive reopening', async () =>
     const first = await createTestBank(path);
     await first.close();
     const second = await createTestBank(path);
-    assert.equal((await second.all('SELECT * FROM schema_migrations')).length, 3);
+    assert.equal((await second.all('SELECT * FROM schema_migrations')).length, 4);
     assert.equal((await second.taxonomy()).semesters.length, 2);
     assert.equal((await second.one('PRAGMA integrity_check'))?.integrity_check, 'ok');
     await second.close();

@@ -78,7 +78,14 @@ export class VisibilityService {
           solutions: answers === 'true' ? doc.solutions : [],
           hints: hints === 'true' ? doc.hints : [],
           assets: doc.assets.filter(
-            (asset) => answers === 'true' || !['answer_diagram', 'answer_pdf'].includes(asset.kind),
+            (asset) =>
+              answers === 'true' ||
+              (!['answer_diagram', 'answer_pdf'].includes(asset.kind) &&
+                ![
+                  ...doc.solutions.flatMap((s) => [s.blocks, ...s.steps.map((t) => t.blocks)]),
+                ].some((blocks) =>
+                  blocks?.some((b) => b.type === 'image' && b.assetId === asset.id),
+                )),
           ),
         },
       });

@@ -924,3 +924,26 @@ footer {
 .topic-options .check {
   overflow-wrap: anywhere;
 }
+
+.import-errors {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.import-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1.5rem;
+}
+.import-asset-grid figure {
+  margin: 0;
+  min-width: 0;
+}
+.import-asset-grid img {
+  max-width: 100%;
+  height: auto;
+}
+.import-asset-grid figcaption {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}

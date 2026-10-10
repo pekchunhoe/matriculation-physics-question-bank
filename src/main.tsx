@@ -11,6 +11,9 @@ import './styles.css';
 const Editor = lazy(() => import('./Editor').then((m) => ({ default: m.Editor })));
 const Preview = lazy(() => import('./Preview').then((m) => ({ default: m.Preview })));
 const Curriculum = lazy(() => import('./Curriculum').then((m) => ({ default: m.Curriculum })));
+const QuestionJsonImporter = lazy(() =>
+  import('./QuestionJsonImporter').then((m) => ({ default: m.QuestionJsonImporter })),
+);
 const Importer = lazy(() => import('./Importer').then((m) => ({ default: m.Importer })));
 const QuestionSet = lazy(() => import('./QuestionSet').then((m) => ({ default: m.QuestionSet })));
 function App() {
@@ -44,8 +47,11 @@ function App() {
             Curriculum
           </a>
           {admin && (
-            <a aria-current={current === 'import' ? 'page' : undefined} href="/import">
-              Import JSON
+            <a
+              aria-current={current === 'import' ? 'page' : undefined}
+              href="/import/question-json"
+            >
+              Import Question JSON
             </a>
           )}
           {admin && (
@@ -82,7 +88,11 @@ function App() {
               <PublicCurriculum tax={tax} />
             )
           ) : current === 'import' ? (
-            <Importer tax={tax} />
+            path[1] === 'question-json' ? (
+              <QuestionJsonImporter tax={tax} />
+            ) : (
+              <Importer tax={tax} />
+            )
           ) : (
             <Browser tax={tax} />
           )}

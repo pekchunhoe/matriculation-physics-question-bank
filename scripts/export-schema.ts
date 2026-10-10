@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
+import { questionPackageSchema } from '../shared/question-import.js';
 import { documentSchema } from '../shared/schema.js';
 import { curriculumImportSchema, questionExportSchema } from '../shared/curriculum.js';
 const schema = z.toJSONSchema(documentSchema, { unrepresentable: 'any' });
@@ -22,6 +23,12 @@ if (process.argv.includes('--check')) {
   console.log('Versioned JSON schema: PASS');
 } else writeFileSync('docs/question-v1.schema.json', output);
 for (const [schema, path, id, title] of [
+  [
+    questionPackageSchema,
+    'docs/question-json-import.schema.json',
+    'urn:matriculation-physics:question-package:1',
+    'Self-contained question package v1',
+  ],
   [
     curriculumImportSchema,
     'docs/curriculum-v1.schema.json',

@@ -258,6 +258,7 @@ export class Bank {
   }
   private async writeContent(id: string, doc: QuestionDocument) {
     for (const table of [
+      'question_content_blocks',
       'solution_steps',
       'solutions',
       'hints',
@@ -304,7 +305,7 @@ export class Bank {
       await this.run('INSERT INTO hints VALUES(?,?,?,?,?)', id, h.id, h.partId, h.text, h.order);
     for (const a of doc.assets)
       await this.run(
-        'INSERT INTO assets VALUES(?,?,?,?,?,?,?,?)',
+        'INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?)',
         id,
         a.id,
         a.partId,
@@ -313,7 +314,32 @@ export class Bank {
         a.alt,
         a.mime,
         a.order,
+        a.importMetadata ? JSON.stringify(a.importMetadata) : null,
       );
+    const owners: [string, import('../shared/content.js').ContentBlock[] | undefined][] = [
+      ['question', doc.question.blocks],
+      ...doc.parts.map(
+        (p) => [JSON.stringify(['part', p.id]), p.blocks] as [string, typeof p.blocks],
+      ),
+      ...doc.solutions.flatMap((s) => [
+        [JSON.stringify(['solution', s.partId]), s.blocks] as [string, typeof s.blocks],
+        ...s.steps.map(
+          (t) =>
+            [JSON.stringify(['step', s.partId, t.number]), t.blocks] as [string, typeof t.blocks],
+        ),
+      ]),
+    ];
+    for (const [owner, blocks] of owners)
+      for (const [order, block] of (blocks ?? []).entries())
+        await this.run(
+          'INSERT INTO question_content_blocks VALUES(?,?,?,?,?,?)',
+          id,
+          owner,
+          order,
+          block.type,
+          block.type === 'paragraph' ? block.text : block.type === 'math' ? block.latex : null,
+          block.type === 'image' ? block.assetId : null,
+        );
     for (const tag of doc.tags) {
       const key = normalize(tag);
       let row = await this.one('SELECT id FROM tags WHERE normalized=?', key);
@@ -341,6 +367,11 @@ export class Bank {
         doc.question.title,
         doc.question.scenario,
         ...doc.parts.map((p) => p.prompt),
+        ...[doc.question.blocks, ...doc.parts.map((p) => p.blocks)].flatMap((blocks) =>
+          (blocks ?? []).map((b) =>
+            b.type === 'paragraph' ? b.text : b.type === 'math' ? b.latex : '',
+          ),
+        ),
         ...doc.tags,
         ...Object.values(path ?? {}),
       ].join(' '),
@@ -449,6 +480,19 @@ export class Bank {
     confirmApproval = false,
     classification?: Classification,
   ) {
+    return this.transaction(() =>
+      this.createInTransaction(input, note, author, confirmApproval, classification),
+    );
+  }
+  /** Caller must hold the write transaction; used by atomic import plus receipt. */
+  async createInTransaction(
+    input: unknown,
+    note: string,
+    author: string | null = null,
+    confirmApproval = false,
+    classification?: Classification,
+    id: string = randomUUID(),
+  ) {
     const doc = await this.validate(input);
     this.requireNote(note);
     this.requireAuthor(author);
@@ -456,24 +500,22 @@ export class Bank {
       throw new BankError('Explicit human approval is required', 409);
     if (await this.one('SELECT id FROM questions WHERE question_code=?', doc.question.questionCode))
       throw new BankError('Question code already exists; use the revision workflow', 409);
-    const id = randomUUID();
-    await this.transaction(async () => {
-      await this.activeAssignment(doc);
-      if (classification) {
-        const live = await this.curriculum.classification(doc);
-        for (const key of [
-          'course',
-          'curriculumVersion',
-          'semester',
-          'chapter',
-          'topic',
-          'subtopic',
-        ] as const)
-          if (classification[key]?.id !== live[key]?.id)
-            throw new BankError(`Saved classification conflicts with ${key} relationship`);
-      }
-      await this.activate(id, doc, note, author, 1, true, classification);
-    });
+
+    await this.activeAssignment(doc);
+    if (classification) {
+      const live = await this.curriculum.classification(doc);
+      for (const key of [
+        'course',
+        'curriculumVersion',
+        'semester',
+        'chapter',
+        'topic',
+        'subtopic',
+      ] as const)
+        if (classification[key]?.id !== live[key]?.id)
+          throw new BankError(`Saved classification conflicts with ${key} relationship`);
+    }
+    await this.activate(id, doc, note, author, 1, true, classification);
     return { id, version: 1, warnings: warnings(doc) };
   }
   requireNote(note: string) {

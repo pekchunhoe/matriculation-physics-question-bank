@@ -793,6 +793,7 @@ test('Migration 003 is additive, transactional, repeatable, leaves admins empty 
       { version: 1 },
       { version: 2 },
       { version: 3 },
+      { version: 4 },
     ]);
     assert.deepEqual(await bank.all('PRAGMA foreign_key_check'), []);
   } finally {
@@ -812,6 +813,8 @@ test('Browser sources contain no server credentials or direct database/blob SDK 
     'Curriculum.tsx',
     'CurriculumTools.tsx',
     'Importer.tsx',
+    'QuestionJsonImporter.tsx',
+    'question-import-preparation.ts',
   ];
   for (const file of files)
     assert.doesNotMatch(
@@ -869,7 +872,15 @@ test('Manual CLI audits without migration, applies only explicitly to a scratch 
     assert.equal(applied.status, 0);
     const current = new SQLiteAdapter(path);
     try {
-      await assertCurrentSchema(current);
+      await assertCurrentSchema(current, 3);
+      assert.equal(
+        (
+          await current.execute(
+            "SELECT name FROM sqlite_master WHERE name='question_import_receipts'",
+          )
+        ).rows.length,
+        0,
+      );
       assert.deepEqual((await current.execute('SELECT * FROM admins')).rows, []);
     } finally {
       await current.close();

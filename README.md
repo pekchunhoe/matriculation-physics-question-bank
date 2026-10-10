@@ -80,3 +80,11 @@ See [architecture](docs/architecture.md) for the schema and revision design.
 This checkout includes the same-deployment Express API, native ESM checks, persistent admin sessions, durable abuse controls and resource-authorized Private Blob delivery. Anonymous authoring returns 401; administrators can upload validated files after login. Current approved diagrams/schemes are served publicly through the application; private authoring assets require admin identity. Hosted files are capped at 3 MiB; local uploads remain filesystem-based. See [security setup](docs/ADMIN_SECURITY.md), [security verification](ADMIN_DATABASE_SECURITY_REPORT.md), [asset storage](docs/ASSET_STORAGE.md) and [Turso runtime setup](docs/TURSO_RUNTIME.md). No deployment or production change was performed; earlier audit/storage/migration reports remain historical evidence.
 
 See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.
+
+## Self-contained Question JSON import
+
+Admins can use `/import/question-json` to paste or upload one JSON package, validate and review rendered content, and **Import as Draft**. Embedded diagrams/FBDs are supplied in that same file; no runtime AI/API token is needed. See [the complete format guide](docs/question-json-import-format.md), [generated schema](docs/question-json-import.schema.json), and [examples](examples/question-import).
+
+Migration 004 has been applied to Production after a verified cloud backup and complete preservation checks for its existing draft. Application release remains subject to exact-commit protected Preview and security verification; runtime requests never migrate the database. See [rollout status](QUESTION_JSON_IMPORT_PRODUCTION_ROLLOUT_REPORT.md) and [future syllabus audit](SYLLABUS_VERSION_REUSE_AUDIT.md). Existing structured exports/revisions remain available at `/import`.
+
+Portable Question JSON excludes original PDF/question-number/page/region provenance. Preserve real PDF visuals through original extraction or lossless high-resolution rasterization/crop without redrawing or educational alterations. After successful import, source files may be discarded; canonical content is stored in database records and private visuals.

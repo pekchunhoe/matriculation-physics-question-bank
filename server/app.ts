@@ -14,6 +14,9 @@ import { warnings } from '../shared/schema.js';
 import { editableKinds } from './curriculum.js';
 import { classificationSchema, type EditableKind } from '../shared/curriculum.js';
 import { AuthService, type AdminIdentity } from './auth.js';
+import { QuestionJsonImportService } from './question-json-import.js';
+import { importLimits } from '../shared/question-import.js';
+import { z } from 'zod';
 import { VisibilityService } from './visibility.js';
 
 export function createApp(
@@ -30,6 +33,7 @@ export function createApp(
     if (!identities.has(req)) identities.set(req, await auth.requireAdmin(req));
     next();
   };
+  const questionImport = new QuestionJsonImportService(bank, storage);
   app.disable('x-powered-by');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -255,6 +259,53 @@ export function createApp(
         await bank.create(doc, req.body.note, req.body.author, req.body.confirmApproval === true),
       );
   });
+  const importUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: importLimits.assetBytes,
+      files: importLimits.assetCount,
+      fields: 2,
+      fieldSize: importLimits.manifestBytes,
+      fieldNameSize: 80,
+      parts: importLimits.assetCount + 2,
+    },
+  });
+  app.post('/api/admin/questions/import/validate', async (req, res) => {
+    const input = z.object({ manifest: z.unknown() }).strict().safeParse(req.body);
+    if (!input.success) throw new BankError('package: Send only the structured manifest');
+    res.json(await questionImport.validate(input.data.manifest, identities.get(req)!));
+  });
+  app.post(
+    '/api/admin/questions/import/commit',
+    (req, _res, next) => {
+      if (
+        Number(req.headers['content-length'] ?? 0) >
+        importLimits.totalAssetBytes + importLimits.manifestBytes + 64 * 1024
+      )
+        throw new BankError('assets: Import request is too large', 413);
+      next();
+    },
+    importUpload.any(),
+    async (req, res) => {
+      const input = z
+        .object({ manifest: z.string(), token: z.string().max(2000) })
+        .strict()
+        .safeParse(req.body);
+      if (!input.success) throw new BankError('package: Send manifest and validation token');
+      let manifest: unknown;
+      try {
+        manifest = JSON.parse(input.data.manifest);
+      } catch {
+        throw new BankError('package: Invalid manifest JSON');
+      }
+      const files = Array.isArray(req.files) ? req.files : [];
+      if (files.reduce((sum, f) => sum + f.size, 0) > importLimits.totalAssetBytes)
+        throw new BankError('assets: Combined binary data exceeds 3 MiB', 413);
+      res
+        .status(201)
+        .json(await questionImport.commit(manifest, input.data.token, files, identities.get(req)!));
+    },
+  );
   app.post('/api/import/validate', async (req, res) => {
     const doc = await bank.resolveImport(req.body.document);
     await checkAssets(doc);
@@ -311,7 +362,11 @@ export function createApp(
             ...doc,
             solutions: [],
             assets: doc.assets.filter(
-              (a) => !['answer_diagram', 'answer_pdf', 'original_pdf'].includes(a.kind),
+              (a) =>
+                !['answer_diagram', 'answer_pdf', 'original_pdf'].includes(a.kind) &&
+                !doc.solutions
+                  .flatMap((s) => [s.blocks, ...s.steps.map((t) => t.blocks)])
+                  .some((blocks) => blocks?.some((b) => b.type === 'image' && b.assetId === a.id)),
             ),
           }
         : doc,

@@ -1,13 +1,14 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { DatabaseAdapter } from './database-adapter.js';
 
-export const currentMigration = 3;
+export const currentMigration = 4;
 
 /** Explicit administrative operation; hosted request initialization never runs it. */
 export async function applyMigrations(
   db: DatabaseAdapter,
   options: {
     beforeMigration?: (version: number) => Promise<void>;
+    throughVersion?: number;
   } = {},
 ) {
   await db.exec(
@@ -19,6 +20,7 @@ export async function applyMigrations(
     .sort();
   for (const name of files) {
     const version = Number(name.split('-')[0]);
+    if (version > (options.throughVersion ?? currentMigration)) continue;
     await db.transaction(async () => {
       const applied = await db.execute('SELECT version FROM schema_migrations WHERE version=?', [
         version,
@@ -46,13 +48,14 @@ export async function applyMigrations(
   }
 }
 
-export async function assertCurrentSchema(db: DatabaseAdapter) {
+export async function assertCurrentSchema(db: DatabaseAdapter, expectedVersion = currentMigration) {
   const result = await db.execute('SELECT version FROM schema_migrations ORDER BY version');
-  if (
-    result.rows.length !== currentMigration ||
-    result.rows.some((row, i) => row.version !== i + 1)
-  )
+  if (result.rows.length !== expectedVersion || result.rows.some((row, i) => row.version !== i + 1))
     throw new Error('Database schema is not current; run the explicit migration procedure');
+  if (expectedVersion >= 4) {
+    await db.execute('SELECT plan_id,manifest_digest FROM question_import_receipts LIMIT 0');
+    await db.execute('SELECT owner_key,block_type FROM question_content_blocks LIMIT 0');
+  }
   // Preparing these reads also verifies the structures used by the current API.
   await db.execute(
     'SELECT cv.id,s.curriculum_version_id,s.status,s.revision,c.status,c.revision,t.status,t.revision,st.status,st.revision FROM curriculum_versions cv LEFT JOIN semesters s ON s.curriculum_version_id=cv.id LEFT JOIN chapters c ON c.semester_id=s.id LEFT JOIN topics t ON t.chapter_id=c.id LEFT JOIN subtopics st ON st.topic_id=t.id LIMIT 0',
