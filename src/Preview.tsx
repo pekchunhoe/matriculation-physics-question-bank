@@ -7,7 +7,8 @@ import { Equation, MathText } from './MathText';
 import type { ContentBlock } from '../shared/content';
 import { useAuth } from './Auth';
 
-function Assets({ items }: { items: Asset[] }) {
+export function Assets({ items }: { items: Asset[] }) {
+  if (!items.length) return null;
   return (
     <div className="assets">
       {[...items]
@@ -19,7 +20,7 @@ function Assets({ items }: { items: Asset[] }) {
             </a>
           ) : (
             <figure key={a.id}>
-              <img src={a.url} alt={a.alt} loading="lazy" />
+              <img src={a.url} alt={a.alt} />
               <figcaption>
                 {a.importMetadata?.caption ?? a.alt}
                 {a.kind === 'answer_diagram' ? ' · Answer diagram' : ''}
@@ -30,7 +31,35 @@ function Assets({ items }: { items: Asset[] }) {
     </div>
   );
 }
-function Blocks({ blocks, assets }: { blocks?: ContentBlock[]; assets: Asset[] }) {
+export function Blocks({
+  blocks,
+  assets,
+  pairedVisuals = false,
+}: {
+  blocks?: ContentBlock[];
+  assets: Asset[];
+  pairedVisuals?: boolean;
+}) {
+  if (pairedVisuals) {
+    const items: React.ReactNode[] = [];
+    for (let i = 0; i < (blocks?.length ?? 0); i++) {
+      const b = blocks![i];
+      if (b.type === 'image' && blocks?.[i + 1]?.type === 'math') {
+        const equations: React.ReactNode[] = [];
+        while (blocks?.[i + 1]?.type === 'math') {
+          const next = blocks[++i];
+          if (next.type === 'math') equations.push(<Equation key={i} value={next.latex} />);
+        }
+        items.push(
+          <div className="visual-equation-pair" key={i}>
+            <Assets items={assets.filter((a) => a.id === b.assetId)} />
+            <div>{equations}</div>
+          </div>,
+        );
+      } else items.push(<Blocks key={i} blocks={[b]} assets={assets} />);
+    }
+    return <>{items}</>;
+  }
   return (
     <>
       {blocks?.map((b, i) => (
@@ -52,16 +81,20 @@ export function ContentPreview({
   teacher,
   print = false,
   showHints = true,
+  showStepHints = showHints,
 }: {
   doc: QuestionDocument;
   teacher: boolean;
   print?: boolean;
   showHints?: boolean;
+  showStepHints?: boolean;
 }) {
   const [revealed, setRevealed] = useState<Record<string, number>>({});
   useEffect(() => setRevealed({}), [doc, teacher]);
   const hints = (partId: string | null) => {
-    const items = doc.hints.filter((h) => h.partId === partId).sort((a, b) => a.order - b.order),
+    const items = doc.hints
+        .filter((h) => h.partId === partId && !h.solutionStepId)
+        .sort((a, b) => a.order - b.order),
       key = partId ?? 'whole',
       count = revealed[key] ?? 0;
     if (!showHints || !items.length) return null;
@@ -97,7 +130,7 @@ export function ContentPreview({
     unplacedAssets.filter(
       (a) =>
         a.partId === partId &&
-        (teacher || !['answer_diagram', 'answer_pdf', 'original_pdf'].includes(a.kind)),
+        !['fbd', 'answer_diagram', 'answer_pdf', 'original_pdf'].includes(a.kind),
     );
   const parts = (parentId: string | null): React.ReactNode =>
     doc.parts
@@ -167,8 +200,21 @@ export function ContentPreview({
                     <div className="solution-step" key={step.number}>
                       <div className="part-heading">
                         <h4>Step {step.number}</h4>
+                        {step.markingCode && (
+                          <code className="marking-code">{step.markingCode}</code>
+                        )}
                         <span>{step.marks} marks</span>
                       </div>
+                      {showStepHints &&
+                        doc.hints
+                          .filter((h) => h.solutionStepId && h.solutionStepId === step.id)
+                          .sort((a, b) => a.order - b.order)
+                          .map((h) => (
+                            <div className="step-hint" key={h.id}>
+                              <strong>Student hint:</strong>
+                              <MathText value={h.text} />
+                            </div>
+                          ))}
                       <MathText value={step.explanation} />
                       <Equation value={step.equationLatex} />
                       <MathText value={step.working} />
@@ -190,7 +236,8 @@ export function ContentPreview({
                 <Assets
                   items={unplacedAssets.filter(
                     (a) =>
-                      a.partId === s.partId && ['answer_diagram', 'answer_pdf'].includes(a.kind),
+                      a.partId === s.partId &&
+                      ['fbd', 'answer_diagram', 'answer_pdf'].includes(a.kind),
                   )}
                 />
               </section>

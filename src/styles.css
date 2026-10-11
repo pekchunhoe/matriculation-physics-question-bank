@@ -839,6 +839,266 @@ footer {
   display: grid;
   gap: 1rem;
 }
+.marking-code {
+  color: #007c96;
+  font:
+    600 0.9em Arial,
+    sans-serif;
+  letter-spacing: 0.03em;
+}
+.step-hint {
+  color: #48667d;
+  margin: 2mm 0;
+  font-size: 0.9em;
+}
+.step-hint .prose {
+  display: inline;
+  line-height: 1.5;
+}
+.step-award {
+  display: flex;
+  gap: 5mm;
+  align-items: baseline;
+  white-space: nowrap;
+  font-size: 0.85em;
+}
+.set-order {
+  padding: 1rem 2rem;
+}
+.set-order li {
+  margin: 0.6rem 0;
+}
+.set-order li > span {
+  display: inline-block;
+  min-width: 35%;
+}
+.set-order button {
+  margin-left: 0.5rem;
+}
+.master-paper {
+  box-sizing: border-box;
+  max-width: 210mm;
+  min-height: 297mm;
+  padding: 16mm 19mm 12mm;
+  margin: 0 auto 2rem;
+  background: white;
+  color: #23313e;
+  border: 1px solid #dce4eb;
+  font:
+    11pt/1.55 Georgia,
+    'Times New Roman',
+    serif;
+}
+.master-header {
+  font:
+    8pt/1.4 Arial,
+    sans-serif;
+  color: #536f88;
+  padding-bottom: 4mm;
+  border-bottom: 1px solid #dce4eb;
+  margin-bottom: 10mm;
+}
+.master-paper h2 {
+  font:
+    700 22pt/1.2 Arial,
+    sans-serif;
+  color: #193e56;
+  margin: 0 0 3mm;
+}
+.master-subtitle {
+  font:
+    600 12pt/1.4 Arial,
+    sans-serif;
+  color: #193e56;
+  margin: 0 0 3mm;
+}
+.master-meta {
+  display: flex;
+  gap: 8mm;
+  flex-wrap: wrap;
+  color: #007c96;
+  font:
+    600 9pt/1.4 Arial,
+    sans-serif;
+  margin-bottom: 7mm;
+}
+.master-paper .prose {
+  line-height: 1.6;
+  margin: 3mm 0;
+}
+.master-paper .assets {
+  justify-content: center;
+  margin: 4mm 0;
+}
+.master-paper .assets figure {
+  flex: 0 1 auto;
+  text-align: center;
+  break-inside: avoid;
+}
+.master-paper .assets img {
+  margin: auto;
+  max-width: min(100%, 145mm);
+  max-height: 85mm;
+  width: auto;
+  height: auto;
+}
+.master-paper .assets figcaption {
+  font:
+    8pt/1.4 Arial,
+    sans-serif;
+  color: #536f88;
+}
+.master-part {
+  margin: 5mm 0;
+}
+.master-paper h3 {
+  font:
+    600 11pt/1.4 Arial,
+    sans-serif;
+  color: #193e56;
+  margin: 2mm 0;
+}
+.master-part .part-heading {
+  break-after: avoid;
+}
+.master-step {
+  border-top: 1px solid #dce4eb;
+  padding-top: 3mm;
+  margin: 4mm 0;
+  break-inside: avoid;
+}
+.master-step h4 {
+  font:
+    600 11pt/1.4 Arial,
+    sans-serif;
+  color: #193e56;
+  margin: 0;
+}
+.master-step .assets img {
+  max-width: 95mm;
+  max-height: 48mm;
+}
+.master-paper .equation {
+  text-align: center;
+  margin: 1mm 0;
+}
+.master-paper .katex-display {
+  margin: 0.35em 0;
+}
+.master-paper .marking-point {
+  font-size: 9pt;
+  margin: 2mm 0;
+}
+.master-answer {
+  font-size: 9.5pt;
+  line-height: 1.4;
+}
+.master-answer h2 {
+  font-size: 19pt;
+}
+.master-answer .master-subtitle {
+  font-size: 11pt;
+}
+.master-step .step-title .prose {
+  display: inline;
+}
+.master-answer .master-meta {
+  margin-bottom: 4mm;
+}
+.master-answer .prose {
+  margin: 1.5mm 0;
+  line-height: 1.45;
+}
+.master-answer .equation,
+.master-answer .katex-display {
+  padding: 0.5mm 0;
+}
+.master-answer .katex-display {
+  margin: 0.1em 0;
+}
+.master-answer .master-step {
+  margin: 2.5mm 0;
+  padding-top: 2mm;
+}
+.master-answer .step-hint {
+  margin: 1mm 0;
+}
+.master-answer .marking-point {
+  margin: 1mm 0;
+  font-size: 8pt;
+  color: #536f88;
+}
+.visual-equation-pair {
+  display: grid;
+  grid-template-columns: 80mm minmax(0, 1fr);
+  align-items: center;
+  gap: 4mm;
+  break-inside: avoid;
+}
+.master-step .visual-equation-pair .assets {
+  margin: 1mm 0;
+}
+.master-step .visual-equation-pair img {
+  max-width: min(100%, 78mm);
+  max-height: 50mm;
+}
+.master-solution-intro {
+  break-inside: avoid;
+}
+.master-step.oversized-step,
+.master-solution-intro.oversized-step,
+.master-final-answer.oversized-step {
+  break-inside: auto;
+}
+.master-total {
+  text-align: right;
+  font:
+    600 11pt Arial,
+    sans-serif;
+  margin-top: 6mm;
+  break-before: avoid;
+}
+.master-final-part,
+.master-final-answer {
+  break-inside: avoid;
+}
+.master-footer {
+  margin-top: 10mm;
+  border-top: 1px solid #dce4eb;
+  padding-top: 3mm;
+  font:
+    7.5pt Arial,
+    sans-serif;
+  color: #536f88;
+}
+@media screen and (max-width: 700px) {
+  .master-paper {
+    max-width: 100%;
+    min-height: 0;
+    padding: 8mm;
+  }
+  .visual-equation-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@page {
+  size: A4 portrait;
+  margin: 16mm 19mm 18mm;
+  @bottom-left {
+    content: 'MATRICULATION PHYSICS';
+    font:
+      7pt Arial,
+      sans-serif;
+    color: #536f88;
+  }
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font:
+      7pt Arial,
+      sans-serif;
+    color: #536f88;
+  }
+}
 @media print {
   .topbar,
   footer,
@@ -848,6 +1108,7 @@ footer {
   main {
     max-width: none;
     padding: 0;
+    min-height: 0;
   }
   .print-question {
     break-before: page;
@@ -868,6 +1129,51 @@ footer {
   .paper,
   .answer-scheme {
     overflow: visible;
+  }
+  :root,
+  html,
+  body,
+  #root {
+    background: white;
+  }
+  .master-paper {
+    width: auto;
+    max-width: none;
+    min-height: 0;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    break-before: page;
+    print-color-adjust: exact;
+  }
+  .master-paper:first-child {
+    break-before: auto;
+  }
+  .master-paper h2,
+  .master-paper h3,
+  .master-paper h4,
+  .master-meta {
+    break-after: avoid;
+  }
+  .master-paper p,
+  .master-paper .prose {
+    orphans: 3;
+    widows: 3;
+  }
+  .master-paper .equation,
+  .master-paper .katex-display {
+    overflow: visible;
+    break-inside: avoid;
+  }
+  .master-paper img {
+    max-width: 100%;
+  }
+  .master-header,
+  .master-footer {
+    display: none;
+  }
+  .master-paper h2 {
+    margin-top: 5mm;
   }
 }
 .public-curriculum {

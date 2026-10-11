@@ -195,7 +195,10 @@ for (const adapter of ['sqlite', 'libsql'] as const)
           tables.map(async (t) => [t, await bank.all(`SELECT * FROM ${t} ORDER BY 1,2`)]),
         ),
       );
-      await applyMigrations(db, { beforeMigration: async (version) => assert.equal(version, 4) });
+      await applyMigrations(db, {
+        throughVersion: 4,
+        beforeMigration: async (version) => assert.equal(version, 4),
+      });
       for (const table of tables) {
         const after = await bank.all(`SELECT * FROM ${table} ORDER BY 1,2`);
         if (table === 'assets')
@@ -207,6 +210,7 @@ for (const adapter of ['sqlite', 'libsql'] as const)
       }
       assert.deepEqual(await bank.document('existing'), doc);
       assert.deepEqual(await bank.all('PRAGMA foreign_key_check'), []);
+      await applyMigrations(db);
       const { manifest } = splitPackage(await localPackage(bank));
       const row = await bank.one('SELECT id FROM admins WHERE email=?', testEmail);
       const admin = { id: String(row!.id), email: testEmail, role: 'admin' as const };
@@ -220,7 +224,7 @@ for (const adapter of ['sqlite', 'libsql'] as const)
         (await bank.all('SELECT version FROM schema_migrations ORDER BY version')).map(
           (r) => r.version,
         ),
-        [1, 2, 3, 4],
+        [1, 2, 3, 4, 5],
       );
       assert.equal((await bank.one('PRAGMA integrity_check'))?.integrity_check, 'ok');
     } finally {

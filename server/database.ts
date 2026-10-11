@@ -259,9 +259,9 @@ export class Bank {
   private async writeContent(id: string, doc: QuestionDocument) {
     for (const table of [
       'question_content_blocks',
+      'hints',
       'solution_steps',
       'solutions',
-      'hints',
       'assets',
       'question_parts',
       'question_tags',
@@ -289,7 +289,7 @@ export class Bank {
       );
       for (const t of s.steps)
         await this.run(
-          'INSERT INTO solution_steps VALUES(?,?,?,?,?,?,?,?,?)',
+          'INSERT INTO solution_steps(question_id,part_id,step_number,explanation,equation_latex,working,marking_point,marks,display_order,step_id,marking_code) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
           id,
           s.partId,
           t.number,
@@ -299,10 +299,20 @@ export class Bank {
           t.markingPoint,
           t.marks,
           t.order,
+          t.id ?? null,
+          t.markingCode ?? null,
         );
     }
     for (const h of doc.hints)
-      await this.run('INSERT INTO hints VALUES(?,?,?,?,?)', id, h.id, h.partId, h.text, h.order);
+      await this.run(
+        'INSERT INTO hints(question_id,id,part_id,hint_text,display_order,solution_step_id) VALUES(?,?,?,?,?,?)',
+        id,
+        h.id,
+        h.partId,
+        h.text,
+        h.order,
+        h.solutionStepId ?? null,
+      );
     for (const a of doc.assets)
       await this.run(
         'INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?)',

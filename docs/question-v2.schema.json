@@ -385,6 +385,15 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "markingCode": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9+._/-]{0,23}$"
+                    },
                     "blocks": {
                       "maxItems": 100,
                       "type": "array",
@@ -515,6 +524,18 @@
                 "maxLength": 120
               },
               "partId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "solutionStepId": {
                 "anyOf": [
                   {
                     "type": "string",

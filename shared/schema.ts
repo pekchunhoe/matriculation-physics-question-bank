@@ -24,6 +24,14 @@ export const partSchema = z
   });
 export const stepSchema = z
   .object({
+    id: id.optional(),
+    markingCode: z
+      .string()
+      .regex(
+        /^[A-Za-z0-9][A-Za-z0-9+._/-]{0,23}$/,
+        'Use 1–24 letters, digits or + . _ / -; start with a letter or digit',
+      )
+      .optional(),
     blocks: blocksSchema.optional(),
     number: z.number().int().positive(),
     explanation: prose,
@@ -48,10 +56,45 @@ export const hintSchema = z
   .object({
     id,
     partId: id.nullable(),
+    solutionStepId: id.nullable().optional(),
     text: prose.refine((v) => Boolean(v.trim()), 'Hint text is required'),
     order: z.number().int().min(0),
   })
   .strict();
+/** Explicit question-scoped step keys; never infer a relationship from array position. */
+export function validateStepHints(
+  doc: { solutions: z.infer<typeof solutionSchema>[]; hints: z.infer<typeof hintSchema>[] },
+  ctx: z.RefinementCtx,
+) {
+  const steps = new Map<string, string | null>();
+  const fail = (path: (string | number)[], message: string) =>
+    ctx.addIssue({ code: 'custom', path, message });
+  for (const [i, solution] of doc.solutions.entries())
+    for (const [j, step] of solution.steps.entries()) {
+      if (!step.id) continue;
+      if (steps.has(step.id))
+        fail(
+          ['solutions', i, 'steps', j, 'id'],
+          'Step keys must be unique across all solutions in this question',
+        );
+      steps.set(step.id, solution.partId);
+    }
+  const orders = new Map<string, Set<number>>();
+  for (const [i, hint] of doc.hints.entries()) {
+    if (hint.solutionStepId) {
+      if (!steps.has(hint.solutionStepId))
+        fail(['hints', i, 'solutionStepId'], 'Unknown solution step in this question');
+      else if (steps.get(hint.solutionStepId) !== hint.partId)
+        fail(['hints', i, 'partId'], 'Hint part must match the targeted solution step owner');
+    }
+    const target = JSON.stringify([hint.partId, hint.solutionStepId ?? null]);
+    const used = orders.get(target) ?? new Set<number>();
+    if (used.has(hint.order))
+      fail(['hints', i, 'order'], 'Hint order must be unique within its target');
+    used.add(hint.order);
+    orders.set(target, used);
+  }
+}
 export const assetSchema = z
   .object({
     id,
@@ -135,6 +178,7 @@ export const documentSchema = z
     }
     if (doc.parts.length && doc.solutions.some((s) => s.partId === null))
       fail('Whole-question solutions require a no-part question');
+    validateStepHints(doc, ctx);
     const blockOwners = [
       doc.question.blocks,
       ...doc.parts.map((p) => p.blocks),

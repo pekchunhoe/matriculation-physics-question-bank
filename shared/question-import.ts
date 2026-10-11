@@ -1,5 +1,5 @@
 ﻿import { z } from 'zod';
-import { partSchema, solutionSchema, hintSchema } from './schema.js';
+import { partSchema, solutionSchema, hintSchema, validateStepHints } from './schema.js';
 import { prose, blocksSchema, visualMetadataSchema } from './content.js';
 
 export const importLimits = {
@@ -120,10 +120,8 @@ function validatePackage(doc: ImportManifest, ctx: z.RefinementCtx) {
       fail(['hints', i, 'partId'], 'Unknown hint part');
   if (new Set(doc.hints.map((h) => h.id)).size !== doc.hints.length)
     fail(['hints'], 'Hint keys must be unique');
+  validateStepHints(doc, ctx);
   for (const partId of [null, ...partIds]) {
-    const hints = doc.hints.filter((h) => h.partId === partId);
-    if (new Set(hints.map((h) => h.order)).size !== hints.length)
-      fail(['hints'], 'Hint order must be unique within its target');
     const siblings = doc.parts.filter((p) => p.parentId === partId);
     if (new Set(siblings.map((p) => p.order)).size !== siblings.length)
       fail(['parts'], 'Sibling part order must be unique');

@@ -207,7 +207,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
           </section>
           <QuestionMetadata doc={preview.document} tax={tax} saved={preview.classification} />
           <h2>Question and marking scheme preview</h2>
-          <ContentPreview doc={preview.document} teacher showHints={false} />
+          <ContentPreview doc={preview.document} teacher showHints={false} showStepHints />
           <section className="panel">
             <h2>Student Hints</h2>
             {!preview.document.hints.length && <p>No hints supplied.</p>}

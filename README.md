@@ -6,7 +6,7 @@ A public approved-question bank with authenticated administrator authoring, rela
 
 Requires Node.js 24 or newer.
 
-Set server-side `TURSO_DATABASE_URL` and write-capable `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [admin setup](docs/ADMIN_SECURITY.md) and [Turso/Vercel setup](docs/TURSO_RUNTIME.md). The database must have migrations 001, 002 and 003; startup verifies the schema and never runs migrations. Migration 003 and first-admin bootstrap require separate manual invocation after review; neither was performed in production by this task.
+Set server-side `TURSO_DATABASE_URL` and write-capable `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [admin setup](docs/ADMIN_SECURITY.md) and [Turso/Vercel setup](docs/TURSO_RUNTIME.md). This checkout requires migrations 001–005; startup verifies the schema and never runs migrations. Production migration 005 passed the separately authorized backup and existing-draft preservation checks. Application release status is recorded in [the Master rollout report](MASTER_FORMAT_FIDELITY_PRODUCTION_ROLLOUT_REPORT.md). Admin bootstrap and the auth migration CLI remain explicit operations; the auth migration CLI remains capped at 003.
 
 ```powershell
 npm install

@@ -15,6 +15,7 @@ export function Equation({ value }: { value: string }) {
   );
 }
 export function MathText({ value }: { value: string }) {
+  if (!value) return null;
   const chunks = value.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
   return (
     <div className="prose">

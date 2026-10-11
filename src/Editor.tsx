@@ -536,6 +536,19 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                         </Field>
                       ))}
                     </div>
+                    <Field label="Marking code (optional)">
+                      <input
+                        maxLength={24}
+                        value={step.markingCode ?? ''}
+                        onChange={(e) =>
+                          editSolution(i, {
+                            steps: s.steps.map((t, n) =>
+                              n === j ? { ...t, markingCode: e.target.value || undefined } : t,
+                            ),
+                          })
+                        }
+                      />
+                    </Field>
                     {(['explanation', 'equationLatex', 'working', 'markingPoint'] as const).map(
                       (k) => (
                         <Field
@@ -566,7 +579,15 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                     <button
                       type="button"
                       className="button danger"
-                      onClick={() => editSolution(i, { steps: s.steps.filter((_, n) => n !== j) })}
+                      onClick={() => {
+                        if (
+                          doc.hints.some((h) => h.solutionStepId && h.solutionStepId === step.id)
+                        ) {
+                          setError('Remove or reassign linked hints before removing this step.');
+                          return;
+                        }
+                        editSolution(i, { steps: s.steps.filter((_, n) => n !== j) });
+                      }}
                     >
                       Remove step
                     </button>
@@ -581,6 +602,7 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                         steps: [
                           ...s.steps,
                           {
+                            id: crypto.randomUUID(),
                             number: Math.max(0, ...s.steps.map((x) => x.number)) + 1,
                             explanation: '',
                             equationLatex: '',
@@ -598,9 +620,17 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                   <button
                     type="button"
                     className="button danger"
-                    onClick={() =>
-                      setDoc((d) => ({ ...d, solutions: d.solutions.filter((_, n) => n !== i) }))
-                    }
+                    onClick={() => {
+                      if (
+                        doc.hints.some(
+                          (h) => h.solutionStepId && s.steps.some((t) => t.id === h.solutionStepId),
+                        )
+                      ) {
+                        setError('Remove or reassign linked hints before removing this solution.');
+                        return;
+                      }
+                      setDoc((d) => ({ ...d, solutions: d.solutions.filter((_, n) => n !== i) }));
+                    }}
                   >
                     Remove solution
                   </button>
@@ -644,13 +674,41 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                       setDoc((d) => ({
                         ...d,
                         hints: d.hints.map((x, j) =>
-                          j === i ? { ...x, partId: e.target.value || null } : x,
+                          j === i
+                            ? { ...x, partId: e.target.value || null, solutionStepId: undefined }
+                            : x,
                         ),
                       }))
                     }
                   >
                     <option value="">Whole question</option>
                     {partChoices}
+                  </select>
+                </Field>
+                <Field label="Solution step (optional)">
+                  <select
+                    value={h.solutionStepId ?? ''}
+                    onChange={(e) =>
+                      setDoc((d) => ({
+                        ...d,
+                        hints: d.hints.map((x, j) =>
+                          j === i ? { ...x, solutionStepId: e.target.value || undefined } : x,
+                        ),
+                      }))
+                    }
+                  >
+                    <option value="">General question / part hint</option>
+                    {doc.solutions
+                      .filter((s) => s.partId === h.partId)
+                      .flatMap((s) =>
+                        s.steps
+                          .filter((t) => t.id)
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              Step {t.number}
+                            </option>
+                          )),
+                      )}
                   </select>
                 </Field>
                 <Field label="Hint text">

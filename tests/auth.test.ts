@@ -794,6 +794,7 @@ test('Migration 003 is additive, transactional, repeatable, leaves admins empty 
       { version: 2 },
       { version: 3 },
       { version: 4 },
+      { version: 5 },
     ]);
     assert.deepEqual(await bank.all('PRAGMA foreign_key_check'), []);
   } finally {

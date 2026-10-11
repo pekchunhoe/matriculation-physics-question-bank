@@ -680,7 +680,7 @@ test('whole-question SQL constraints reject orphan steps and duplicate schemes w
     );
     await assert.rejects(
       e.bank.run(
-        'INSERT INTO solution_steps VALUES(?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO solution_steps(question_id,part_id,step_number,explanation,equation_latex,working,marking_point,marks,display_order) VALUES(?,?,?,?,?,?,?,?,?)',
         'unknown-question',
         null,
         1,
@@ -699,7 +699,7 @@ test('whole-question SQL constraints reject orphan steps and duplicate schemes w
     );
     await assert.rejects(
       e.bank.run(
-        'INSERT INTO solution_steps VALUES(?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO solution_steps(question_id,part_id,step_number,explanation,equation_latex,working,marking_point,marks,display_order) VALUES(?,?,?,?,?,?,?,?,?)',
         r.id,
         null,
         1,

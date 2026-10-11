@@ -54,11 +54,13 @@ test('Public selections prepare server-validated questions and generate a PDF wi
   await page.goto('/?q=TEST-S1-0');
   await page.getByRole('checkbox', { name: 'Select TEST-S1-0', exact: true }).check();
   await page.getByRole('link', { name: 'Prepare question set' }).click();
-  await expect(page.locator('.print-question')).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'Answer scheme', exact: true })).toHaveCount(0);
+  await expect(page.locator('.master-question')).toHaveCount(1);
+  await expect(page.locator('.master-answer')).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Include marking schemes' }).check();
   await page.getByRole('checkbox', { name: 'Include student hints' }).check();
-  await expect(page.getByRole('heading', { name: 'Answer scheme', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Question 1 · Answer scheme', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('TEST ONLY hint one')).toBeVisible();
   await expect(page.getByText('PRIVATE TEACHER NOTE')).toHaveCount(0);
   const button = page.getByRole('button', { name: 'Print / Save as PDF', exact: true });
