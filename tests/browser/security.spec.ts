@@ -1,6 +1,33 @@
 import { test, expect } from '@playwright/test';
 import { testEmail, testPassword } from '../auth-fixture.js';
 
+test('Bundled KaTeX size fonts load under CSP without font violations', async ({ page }) => {
+  await page.addInitScript(() => {
+    const auditWindow = window as unknown as { fontViolations: string[] };
+    auditWindow.fontViolations = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      if (event.effectiveDirective === 'font-src')
+        auditWindow.fontViolations.push(event.blockedURI);
+    });
+  });
+  await page.goto('/?q=TEST-S1-0');
+  await expect(page.locator('.question-card')).toHaveCount(1);
+  const result = await page.evaluate(async () => {
+    const families = ['KaTeX_Size1', 'KaTeX_Size2', 'KaTeX_Size3', 'KaTeX_Size4'];
+    const loaded = await Promise.all(
+      families.map((family) => document.fonts.load('16px "' + family + '"')),
+    );
+    return {
+      loaded: loaded.map(
+        (faces) => faces.length > 0 && faces.every((face) => face.status === 'loaded'),
+      ),
+      violations: (window as unknown as { fontViolations: string[] }).fontViolations,
+    };
+  });
+  expect(result.loaded).toEqual([true, true, true, true]);
+  expect(result.violations).toEqual([]);
+});
+
 test('CSP blocks inline execution and third-party network access while public pages work', async ({
   page,
 }) => {

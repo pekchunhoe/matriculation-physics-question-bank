@@ -5,7 +5,8 @@ export const contentSecurityPolicy = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' blob: data:",
-  "font-src 'self' https://fonts.gstatic.com",
+  // Vite embeds small, trusted KaTeX font files as data URLs in compiled CSS.
+  "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
