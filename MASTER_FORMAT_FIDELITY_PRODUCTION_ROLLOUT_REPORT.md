@@ -1,7 +1,7 @@
 # MATRICULATION PHYSICS QUESTION BANK
 # MASTER FORMAT FIDELITY — PRODUCTION ROLLOUT
 
-Updated 11 October 2026. Release preparation; deployment gates remain pending until evidence below is updated. No educational-content or asset write is permitted during this rollout.
+Updated 11 October 2026. **MASTER FORMAT FIDELITY DEPLOYED — EXISTING DRAFT PRESERVED — READY FOR FIRST MASTER-FORMAT REAL QUESTION JSON.** No question was imported, edited, approved or deleted, and no asset or curriculum content was created or changed.
 
 ## PRECHECK
 
@@ -25,6 +25,7 @@ Schema fingerprint: `eeeba1089ad5cd742eb75a358fdc1a8140789f432d93856c88ff8c31c95
 Migration fingerprint: `7993746d018dc57fbb34c77c8161533b6f86d5708a4e9ab83bbe0e814d294a2b`.
 Sanitized domain fingerprint: `573f3a4d618f4ed010e3b905af4e5556729d76eb676ae572c5fe54e1481bfa64`.
 No previous backup was deleted or changed. Supported copy flags were checked against [Turso's official database-copy documentation](https://docs.turso.tech/cli/db/create).
+Final independent retention check confirms the new backup plus `phys-pre-m004-20261010t100231z`, `phys-pre-curr-20261009-c453ac`, `phys-pre-act-20261010-c010f5` and `phys-pre-q1-20261010-00baa9` still exist.
 
 ## MIGRATION 005
 
@@ -55,12 +56,14 @@ All old step IDs, marking codes and hint step links remain NULL. Runtime initial
 
 ## MASTER FEATURES
 
-Marking codes: **PASS locally**.
-Step-linked hints: **PASS locally**.
-Dynamic numbering: **PASS locally**.
-Master A4 PDF template: **PASS locally**.
-Question/answer shared numbering: **PASS locally**.
-Question-only answer isolation: **PASS locally**.
+Marking codes: **PASS**.
+Step-linked hints: **PASS**.
+Dynamic numbering: **PASS**.
+Master A4 PDF template: **PASS**.
+Question/answer shared numbering: **PASS**.
+Question-only answer isolation: **PASS**.
+
+Evidence combines the disposable integration/rendered browser/PDF matrix, read-only authenticated Preview validation and identical served Preview/Production bundles. No approved Production question exists, so no invented public question, Production PDF fixture, code or hint was created to demonstrate these features. Authenticated hosted importer verification used the real admin session and route plus served-byte checks; its interactive synthetic rendering was verified in disposable browsers. Anonymous hosted browser rendering was additionally verified directly in both environments. These scopes are distinct.
 
 All four paths were inspected in actual schemas, relational writes, preview/editor, shared selection plan, reusable Master renderer and CSS. Optional fields preserve schemaVersion 1. Normal export uses canonical DB content/assets and browser `window.print()`: OpenAI calls **0**, LLM calls **0**, image-generation calls **0**, server AI tokens **0**. The Master PDF is never an export source. Original supplied asset bytes remain unchanged.
 
@@ -92,33 +95,47 @@ Counts overlap; focused commands are subsets of the complete suite.
 
 ## SOURCE CONTROL
 
-Commit: **PENDING**.
+Commit: **`cab26a23677bf8fb6b8f2c6e042a668b8e761db0`**.
 Message: **Complete master format fidelity**.
-Push: **PENDING**; branch `feat/admin-security`, normal push only.
+Push: **PASS**; normal push to `feat/admin-security`. Local HEAD, tracking ref and remote branch SHA match.
 Staged scope and secret/artifact audit: **PASS — 34 intended permanent files**, no provider-token/JWT/private-key literals. Complete content review and cached diff checks passed; staged contents match reviewed files after Git's configured CRLF/LF normalization. This scoped pattern scan does not claim detection of every possible secret format.
 Ignored local evidence is under `data/master-rollout/` and `data/master-fidelity/`; logs, PDFs, images, databases, Playwright output, environment files and credentials are excluded.
+The commit includes this report's release-preparation version. These final factual report updates remain uncommitted; the tested/deployed application SHA is unchanged. No second commit, force push or unrelated historical audit staging occurred.
 
 ## PROTECTED PREVIEW
 
-URL: **PENDING**.
-Exact commit: **PENDING**. Protection: **PENDING exact-deployment verification**; current project protection is `all_except_custom_domains`.
+URL: **https://matriculation-physics-question-bank-1egjmwciy.vercel.app**.
+Exact commit: **PASS — `cab26a23677bf8fb6b8f2c6e042a668b8e761db0`**. Preview environment / READY: **PASS**. Protection: **PASS — `all_except_custom_domains`**; unauthenticated health redirects with HTTP 302, authenticated provider transport gets HTTP 200.
 Database isolation: **UNVERIFIED; treat as Production-backed**. The same private Blob store is connected to both environments. No hosted question/asset/import write test is permitted.
-Importer: **PENDING**. Marking codes: **PENDING**. Step hints: **PENDING**.
-Numbering: **PENDING**. A4 PDF: **PENDING**. Security: **PENDING**.
-Hosted read-only evidence will be distinguished from disposable synthetic rendering/validation evidence.
+Importer: **PASS** — authenticated admin session and importer route HTTP 200; non-admin interactive browser shows Admin login.
+Marking codes / step hints: **PASS**, including authenticated read-only Master validation retaining five keyed marking-code steps and six linked hints.
+Numbering / A4 PDF: **PASS in disposable rendered tests and identical hosted build**.
+All nine hosted JavaScript/CSS bundles match the tested local build byte-for-byte. The served build contains the reusable Master renderer and importer controls. All 65 local browser tests plus the focused 16 pass. All 13 generated PDFs pass A4/counter/header/exclusion checks. Interactive anonymous hosted browser checks pass through provider-authenticated read-only transport: importer shows Admin login, empty public bank renders, no JavaScript page errors. Screenshots were inspected; provider toolbar integrations were blocked during these checks.
+Preview security: **PASS** — zero approved list/count/search results, existing draft detail and print-set 404, protected export 401, missing asset 404, anonymous importer validation 401. Authenticated CSRF check returns 403 without required same-origin headers. Read-only validation of no-part, nested, visual and Master synthetic manifests returned 200; no import commit or upload followed. The draft fingerprint was rechecked and matched afterward. No question/import/asset/curriculum write occurred.
+
+The existing administrator entered the password only at a hidden local terminal prompt. Password and session cookie stayed in process memory, were never printed or saved, and the helper logged out its own session after final Production checks. No secrets were requested in chat.
 
 ## PRODUCTION
 
-Exact commit: **PENDING**. Deployment: **NOT ATTEMPTED**.
-Health: **PENDING replacement runtime**. Importer: **PENDING authenticated read-only verification**.
+Exact commit: **`cab26a23677bf8fb6b8f2c6e042a668b8e761db0`**. Deployment: **PASS**.
+Deployment ID: **`dpl_B6jEN55NAPgZkEd5gUxqs95pYGXf`**.
+Deployment URL: **https://matriculation-physics-question-bank-cilethdkp.vercel.app**.
+Canonical application: **https://matriculation-physics-question-bank.vercel.app**.
+The exact verified Preview commit was rebuilt with the existing Production environment; deployment target, READY state, Git SHA and canonical alias assignment were independently confirmed. No binding, environment variable, domain or protection configuration changed.
+
+Health: **PASS — HTTP 200**. Importer: **PASS — authenticated session and `/import/question-json` HTTP 200**. Paste/upload/validate controls, marking-code/step-hint support, shared set renderer and Master template are present in the same nine byte-identical served bundles verified against the tested local build. Import as Draft was never submitted. Production validation did not submit a synthetic or real question manifest.
+
+Production security/read-only UI: **PASS** — public approved list/count/search zero; draft detail/answer/hint/print resources 404; protected export and anonymous validation 401; authenticated CSRF denial 403. Empty public bank and non-admin importer blocking also pass direct interactive browser checks. Production has no assets; real-asset and code-bearing draft privacy cases are verified locally.
+
+The previous runtime returned HTTP 503 between migration 005 and its gated replacement because it expected schema 004. Final health is HTTP 200. One local release-precondition attempt stopped before any deployment request because its log reader treated PowerShell UTF-16 logs as UTF-8; the reader was corrected, all quality evidence rechecked, and the guarded release passed.
 Database migrations: **001/002/003/004/005**.
 Questions: **1**. Draft: **1**. Approved: **0**. Assets: **0**.
-Existing draft unchanged: **PASS after migration; final audit pending**.
+Existing draft unchanged: **PASS after migration, Preview checks, immediate predeployment recheck and final postdeployment private audit**; the complete semantic fingerprint matches. Questions/reviewing/approved/retired: **1 / 0 / 0 / 0**, with the one question still draft. Parts/schemes/steps/hints: **4 / 4 / 8 / 4**. Immutable versions/classifications/search rows: **1 / 1 / 1**. Pending revisions/tags/question tags/assets/import blocks/receipts: **all 0**. Curriculum events: **3**. Active PHYSICS-2022-2023, retired LEGACY and active hierarchy **2 / 18 / 82 / 0** remain unchanged. FK/integrity: **PASS**. New nullable fields on the old draft remain NULL. Backup retention: **PASS**.
 Questions imported during rollout: **0**. Assets uploaded during rollout: **0**. Curriculum mutations: **0**.
 Environment variables, Turso/Blob bindings, deployment protection and domains remain unchanged.
 
 ## FINAL STATUS
 
-**IN PROGRESS — migration 005 preserved the existing draft; application release gates pending.**
+**MASTER FORMAT FIDELITY DEPLOYED — EXISTING DRAFT PRESERVED — READY FOR FIRST MASTER-FORMAT REAL QUESTION JSON.**
 
-Real import, draft edit/approval and future mapping work remain outside this rollout.
+Rollout stops here. Real import, draft edit/approval, Production assets and future mapping work require the next separately authorized task.

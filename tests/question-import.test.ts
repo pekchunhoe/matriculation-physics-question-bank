@@ -226,12 +226,12 @@ test('validate performs no writes or Blob calls; no-part import creates one draf
   const e = await environment();
   try {
     const before = await e.bank.all('SELECT * FROM questions');
-    const preview = await e.service.validate(e.manifest, e.admin);
+    const preview = await e.service.validate(e.manifest, e.admin, 'Easy');
     assert.deepEqual(await e.bank.all('SELECT * FROM questions'), before);
     assert.equal(e.storage.puts, 0);
     assert.equal(e.storage.reads, 0);
     assert.deepEqual(preview.marks, { question: 2, parts: 2, markingScheme: 2 });
-    const created = await e.service.commit(e.manifest, preview.token, [], e.admin);
+    const created = await e.service.commit(e.manifest, preview.token, [], e.admin, 'Easy');
     assert.equal((await e.bank.current(created.id)).status, 'draft');
     const saved = await e.bank.document(created.id);
     assert.deepEqual(saved.parts, []);
@@ -260,14 +260,17 @@ test('nested parts allocate parent marks once, persist flat parent links, and bi
   const e = await environment(false, true);
   try {
     e.manifest.hints[0].partId = 'ai';
-    const p = await e.service.validate(e.manifest, e.admin);
-    const r = await e.service.commit(e.manifest, p.token, [], e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy');
+    const r = await e.service.commit(e.manifest, p.token, [], e.admin, 'Easy');
     const saved = await e.bank.document(r.id);
     assert.equal(saved.parts[1].parentId, 'a');
     assert.equal(saved.hints[0].partId, 'ai');
     assert.deepEqual(p.marks, { question: 2, parts: 2, markingScheme: 2 });
     e.manifest.parts[0].marks = 3;
-    await assert.rejects(e.service.validate(e.manifest, e.admin), /Parent marks|totalMarks/);
+    await assert.rejects(
+      e.service.validate(e.manifest, e.admin, 'Easy'),
+      /Parent marks|totalMarks/,
+    );
   } finally {
     await e.bank.close();
   }
@@ -279,7 +282,7 @@ for (const field of ['curriculumVersionCode', 'chapter', 'topic', 'subtopic'] as
     try {
       e.manifest.classification[field] = 'Nonexistent';
       await assert.rejects(
-        e.service.validate(e.manifest, e.admin),
+        e.service.validate(e.manifest, e.admin, 'Easy'),
         new RegExp('classification.' + field),
       );
       assert.equal((await e.bank.list()).total, 0);
@@ -291,13 +294,12 @@ test('exact matching rejects normalized names and hierarchy mismatches; difficul
   const e = await environment();
   try {
     e.manifest.classification.topic = e.manifest.classification.topic.toLowerCase();
-    await assert.rejects(e.service.validate(e.manifest, e.admin), /classification.topic/);
+    await assert.rejects(e.service.validate(e.manifest, e.admin, 'Easy'), /classification.topic/);
     e.manifest.classification.topic = 'TEST ONLY Momentum';
     e.manifest.classification.semester = 'Semester 2';
-    await assert.rejects(e.service.validate(e.manifest, e.admin), /classification.chapter/);
+    await assert.rejects(e.service.validate(e.manifest, e.admin, 'Easy'), /classification.chapter/);
     e.manifest.classification.semester = 'Semester 1';
-    e.manifest.difficulty = 'easy';
-    await assert.rejects(e.service.validate(e.manifest, e.admin), /difficulty/);
+    await assert.rejects(e.service.validate(e.manifest, e.admin, 'easy'), /selectedDifficulty/);
   } finally {
     await e.bank.close();
   }
@@ -306,26 +308,33 @@ test('exact matching rejects normalized names and hierarchy mismatches; difficul
 test('changed manifest, tampered token, stale curriculum and expired plan are blocked', async () => {
   const e = await environment();
   try {
-    const p = await e.service.validate(e.manifest, e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy');
     const edited = structuredClone(e.manifest);
     edited.question.title = 'Changed';
-    await assert.rejects(e.service.commit(edited, p.token, [], e.admin), /Content changed/);
+    await assert.rejects(
+      e.service.commit(edited, p.token, [], e.admin, 'Easy'),
+      /Content or difficulty changed/,
+    );
     await assert.rejects(
       e.service.commit(
         e.manifest,
         p.token.slice(0, -1) + (p.token.endsWith('a') ? 'b' : 'a'),
         [],
         e.admin,
+        'Easy',
       ),
       /tampered/,
     );
     const expired = new QuestionJsonImportService(e.bank, e.storage, () => Date.now() + 3600_000);
-    await assert.rejects(expired.commit(e.manifest, p.token, [], e.admin), /expired/);
+    await assert.rejects(expired.commit(e.manifest, p.token, [], e.admin, 'Easy'), /expired/);
     await e.bank.run(
       'UPDATE chapters SET revision=revision+1 WHERE name=?',
       e.manifest.classification.chapter,
     );
-    await assert.rejects(e.service.commit(e.manifest, p.token, [], e.admin), /Curriculum changed/);
+    await assert.rejects(
+      e.service.commit(e.manifest, p.token, [], e.admin, 'Easy'),
+      /Curriculum changed/,
+    );
     assert.equal(e.storage.puts, 0);
   } finally {
     await e.bank.close();
@@ -335,20 +344,20 @@ test('changed manifest, tampered token, stale curriculum and expired plan are bl
 test('same signed plan is durable across service instances, simultaneous commits and response-loss retries', async () => {
   const e = await environment(true);
   try {
-    const p = await e.service.validate(e.manifest, e.admin),
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
       another = new QuestionJsonImportService(e.bank, e.storage);
     const results = await Promise.all([
-      e.service.commit(e.manifest, p.token, e.files, e.admin),
-      another.commit(e.manifest, p.token, e.files, e.admin),
+      e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
+      another.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
     ]);
     assert.equal(results[0].id, results[1].id);
     assert.equal((await e.bank.list()).total, 1);
     assert.equal(e.storage.objects.size, 2);
-    const retry = await another.commit(e.manifest, p.token, e.files, e.admin);
+    const retry = await another.commit(e.manifest, p.token, e.files, e.admin, 'Easy');
     assert.equal(retry.id, results[0].id);
     assert.equal(retry.alreadyImported, true);
     assert.match(
-      (await another.validate(e.manifest, e.admin)).warnings.join(' '),
+      (await another.validate(e.manifest, e.admin, 'Easy')).warnings.join(' '),
       /Duplicate content fingerprint/,
     );
   } finally {
@@ -369,8 +378,11 @@ for (const mode of ['signature', 'mime', 'multipart-mime', 'sha', 'length', 'ext
       if (mode === 'sha') e.manifest.assets[0].sha256 = '0'.repeat(64);
       if (mode === 'length') e.files[0].buffer = e.files[0].buffer.subarray(0, 10);
       if (mode === 'extra-file') e.files.push(e.files[0]);
-      const p = await e.service.validate(e.manifest, e.admin);
-      await assert.rejects(e.service.commit(e.manifest, p.token, e.files, e.admin), /assets/);
+      const p = await e.service.validate(e.manifest, e.admin, 'Easy');
+      await assert.rejects(
+        e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
+        /assets/,
+      );
       assert.equal(e.storage.puts, 0);
       assert.equal((await e.bank.list()).total, 0);
     } finally {
@@ -401,7 +413,7 @@ for (const table of [
         displayName: 'unrelated.png',
         sha256: e.manifest.assets[0].sha256,
       });
-      const p = await e.service.validate(e.manifest, e.admin),
+      const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
         run = e.bank.run.bind(e.bank);
       e.bank.run = async (sql, ...params) => {
         if (
@@ -415,9 +427,9 @@ for (const table of [
       if (table === 'hints')
         e.manifest.hints.push({ id: 'test-hint', partId: null, text: 'Hint', order: 0 });
       const token =
-        table === 'hints' ? (await e.service.validate(e.manifest, e.admin)).token : p.token;
+        table === 'hints' ? (await e.service.validate(e.manifest, e.admin, 'Easy')).token : p.token;
       await assert.rejects(
-        e.service.commit(e.manifest, token, e.files, e.admin),
+        e.service.commit(e.manifest, token, e.files, e.admin, 'Easy'),
         /TEST insert failure/,
       );
       for (const t of [
@@ -446,7 +458,7 @@ for (const table of [
 test('final transaction failure rolls back and compensates uploads', async () => {
   const e = await environment(true);
   try {
-    const p = await e.service.validate(e.manifest, e.admin),
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
       original = e.bank.db.transaction.bind(e.bank.db);
     let fail = true;
     e.bank.db.transaction = (fn) =>
@@ -458,7 +470,10 @@ test('final transaction failure rolls back and compensates uploads', async () =>
         }
         return result;
       });
-    await assert.rejects(e.service.commit(e.manifest, p.token, e.files, e.admin), /final commit/);
+    await assert.rejects(
+      e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
+      /final commit/,
+    );
     assert.equal((await e.bank.list()).total, 0);
     assert.equal(e.storage.objects.size, 0);
   } finally {
@@ -469,8 +484,11 @@ test('partial upload failure compensates earlier uploads', async () => {
   const e = await environment(true);
   try {
     e.storage.failPutAt = 2;
-    const p = await e.service.validate(e.manifest, e.admin);
-    await assert.rejects(e.service.commit(e.manifest, p.token, e.files, e.admin), /unavailable/);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy');
+    await assert.rejects(
+      e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
+      /unavailable/,
+    );
     assert.equal(e.storage.objects.size, 0);
     assert.equal((await e.bank.list()).total, 0);
   } finally {
@@ -480,7 +498,7 @@ test('partial upload failure compensates earlier uploads', async () => {
 test('cleanup failure reports reconciliation using opaque references and attempts every cleanup', async () => {
   const e = await environment(true);
   try {
-    const p = await e.service.validate(e.manifest, e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy');
     e.storage.failDelete = true;
     const run = e.bank.run.bind(e.bank);
     e.bank.run = (sql, ...args) => {
@@ -488,7 +506,7 @@ test('cleanup failure reports reconciliation using opaque references and attempt
       return run(sql, ...args);
     };
     await assert.rejects(
-      e.service.commit(e.manifest, p.token, e.files, e.admin),
+      e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
       (err: unknown) =>
         err instanceof AssetConsistencyError &&
         err.code === 'import_cleanup_failed' &&
@@ -518,7 +536,7 @@ test('HTTP admin/CSRF boundary, private FBD byte preservation, and every public 
     const jsonBody = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manifest }),
+      body: JSON.stringify({ manifest, selectedDifficulty: 'Easy' }),
     };
     for (const route of ['validate', 'commit'])
       assert.equal(
@@ -560,6 +578,7 @@ test('HTTP admin/CSRF boundary, private FBD byte preservation, and every public 
     const form = new FormData();
     form.append('manifest', JSON.stringify(manifest));
     form.append('token', plan.token);
+    form.append('selectedDifficulty', 'Easy');
     for (const file of files)
       form.append(
         file.fieldname,
@@ -655,11 +674,11 @@ test('real local libSQL persists no-part and nested imports with relational bloc
       if (nested) nestedPackage(doc);
       doc.question.title += nested ? ' nested' : ' whole';
       const { manifest, files } = splitPackage(doc),
-        p = await service.validate(manifest, admin),
-        r = await service.commit(manifest, p.token, files, admin);
+        p = await service.validate(manifest, admin, 'Easy'),
+        r = await service.commit(manifest, p.token, files, admin, 'Easy');
       assert.equal((await bank.current(r.id)).status, 'draft');
       assert.equal((await bank.document(r.id)).solutions[0].partId, nested ? 'ai' : null);
-      assert.equal((await service.commit(manifest, p.token, files, admin)).id, r.id);
+      assert.equal((await service.commit(manifest, p.token, files, admin, 'Easy')).id, r.id);
     }
     assert.equal((await bank.list()).total, 2);
     assert.equal((await bank.all('SELECT * FROM question_import_receipts')).length, 2);
@@ -672,8 +691,8 @@ test('real local libSQL persists no-part and nested imports with relational bloc
 test('whole-question SQL constraints reject orphan steps and duplicate schemes without fabricated parts', async () => {
   const e = await environment();
   try {
-    const p = await e.service.validate(e.manifest, e.admin),
-      r = await e.service.commit(e.manifest, p.token, [], e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
+      r = await e.service.commit(e.manifest, p.token, [], e.admin, 'Easy');
     await assert.rejects(
       e.bank.run('INSERT INTO solutions VALUES(?,?,?,?,?)', r.id, null, 'Duplicate', '', ''),
       /UNIQUE/,
@@ -724,8 +743,8 @@ test('future curriculum keeps permanent Semester 1 with version-specific curricu
       "UPDATE curriculum_versions SET code='PHYSICS-2028-2029',revision=revision+1 WHERE code='LEGACY'",
     );
     e.manifest.classification.curriculumVersionCode = 'PHYSICS-2028-2029';
-    const p = await e.service.validate(e.manifest, e.admin),
-      r = await e.service.commit(e.manifest, p.token, [], e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
+      r = await e.service.commit(e.manifest, p.token, [], e.admin, 'Easy');
     const saved = await e.bank.savedClassification(r.id);
     assert.equal(saved?.semester.name, 'Semester 1');
     assert.equal(saved?.curriculumVersion.code, 'PHYSICS-2028-2029');
@@ -737,24 +756,28 @@ test('future curriculum keeps permanent Semester 1 with version-specific curricu
 test('oversized manifests, binary data, plan admin binding and stale difficulty fail before storage', async () => {
   const e = await environment(true);
   try {
-    const p = await e.service.validate(e.manifest, e.admin);
+    const p = await e.service.validate(e.manifest, e.admin, 'Easy');
     await assert.rejects(
       e.service.validate(
         { ...e.manifest, question: { ...e.manifest.question, scenario: 'x'.repeat(400000) } },
         e.admin,
+        'Easy',
       ),
       /384 KiB/,
     );
     const tooBig = structuredClone(e.files);
     tooBig[0].buffer = Buffer.alloc(3 * 1024 * 1024 + 1);
-    await assert.rejects(e.service.commit(e.manifest, p.token, tooBig, e.admin), /byteLength/);
     await assert.rejects(
-      e.service.commit(e.manifest, p.token, e.files, { ...e.admin, id: 'other-admin' }),
+      e.service.commit(e.manifest, p.token, tooBig, e.admin, 'Easy'),
+      /byteLength/,
+    );
+    await assert.rejects(
+      e.service.commit(e.manifest, p.token, e.files, { ...e.admin, id: 'other-admin' }, 'Easy'),
       /Administrator unavailable/,
     );
     await e.bank.run("UPDATE difficulty_levels SET sort_order=99 WHERE name='Easy'");
     await assert.rejects(
-      e.service.commit(e.manifest, p.token, e.files, e.admin),
+      e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy'),
       /Curriculum changed/,
     );
     assert.equal(e.storage.puts, 0);
@@ -776,8 +799,8 @@ test('all accepted visual roles persist their metadata and exact placement; no t
     const e = await environment(true);
     try {
       e.manifest.assets[1].role = role;
-      const p = await e.service.validate(e.manifest, e.admin),
-        r = await e.service.commit(e.manifest, p.token, e.files, e.admin);
+      const p = await e.service.validate(e.manifest, e.admin, 'Easy'),
+        r = await e.service.commit(e.manifest, p.token, e.files, e.admin, 'Easy');
       const saved = await e.bank.document(r.id),
         asset = saved.assets[1];
       assert.equal(asset.importMetadata?.role, role);

@@ -4,7 +4,12 @@ import { ContentPreview } from './Preview';
 import { Field, QuestionMetadata } from './components';
 import { MathText } from './MathText';
 import type { Taxonomy } from '../shared/schema';
-import { importLimits, type ImportPreview } from '../shared/question-import';
+import {
+  difficultyOptions,
+  importLimits,
+  type ImportPreview,
+  type SelectedDifficulty,
+} from '../shared/question-import';
 import {
   prepareQuestionImport,
   releaseImport,
@@ -13,6 +18,8 @@ import {
 
 export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
   const [source, setSource] = useState(''),
+    [selectedDifficulty, setSelectedDifficulty] = useState<SelectedDifficulty | ''>(''),
+    [difficultyError, setDifficultyError] = useState(''),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState<ImportPreview | null>(null),
@@ -33,19 +40,33 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
     setSaved(null);
     setDimensions({});
     setError('');
+    setDifficultyError('');
   };
+  let legacyDifficulty = false;
+  try {
+    const parsed: unknown = JSON.parse(source);
+    legacyDifficulty = Boolean(
+      parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'difficulty'),
+    );
+  } catch {
+    /* The package validator reports JSON errors. */
+  }
   async function validate() {
     if (locked.current) return;
+    reset();
+    if (!selectedDifficulty) {
+      setDifficultyError('Select a difficulty before validating this question.');
+      return;
+    }
     locked.current = true;
     setBusy(true);
-    reset();
     const generation = revision.current;
     let next: PreparedImport | null = null;
     try {
       next = await prepareQuestionImport(source);
       const response = await api<ImportPreview>(
         '/admin/questions/import/validate',
-        json('POST', { manifest: next.manifest }),
+        json('POST', { manifest: next.manifest, selectedDifficulty }),
       );
       if (generation !== revision.current) {
         releaseImport(next);
@@ -59,14 +80,19 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
       setPreview(response);
     } catch (e) {
       releaseImport(next);
-      if (generation === revision.current) setError((e as Error).message);
+      if (generation === revision.current) {
+        const message = (e as Error).message;
+        if (message.startsWith('selectedDifficulty:'))
+          setDifficultyError(message.slice('selectedDifficulty:'.length).trim());
+        else setError(message);
+      }
     } finally {
       locked.current = false;
       setBusy(false);
     }
   }
   async function commit() {
-    if (locked.current || !preview || !prepared.current || !reviewed) return;
+    if (locked.current || !preview || !prepared.current || !reviewed || !selectedDifficulty) return;
     locked.current = true;
     setBusy(true);
     setError('');
@@ -74,6 +100,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
       const form = new FormData();
       form.append('manifest', JSON.stringify(prepared.current.manifest));
       form.append('token', preview.token);
+      form.append('selectedDifficulty', selectedDifficulty);
       for (const a of prepared.current.manifest.assets)
         form.append(
           a.key,
@@ -86,6 +113,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
       });
       setSaved(result);
       setSource('');
+      setSelectedDifficulty('');
       if (fileInput.current) fileInput.current.value = '';
       setPreview(null);
       setReviewed(false);
@@ -133,6 +161,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
             onChange={(e) => {
               const file = e.target.files?.[0];
               reset();
+              setSelectedDifficulty('');
               if (!file) return;
               if (!file.name.toLowerCase().endsWith('.json')) {
                 setError('package: Choose one .json file');
@@ -164,10 +193,47 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
             aria-describedby={error ? 'import-errors import-limits' : 'import-limits'}
             onChange={(e) => {
               reset();
+              setSelectedDifficulty('');
               setSource(e.target.value);
             }}
           />
         </Field>
+        <Field label="Difficulty">
+          <select
+            required
+            value={selectedDifficulty}
+            disabled={busy}
+            aria-invalid={Boolean(difficultyError)}
+            aria-describedby={
+              difficultyError ? 'difficulty-error difficulty-help' : 'difficulty-help'
+            }
+            onChange={(e) => {
+              reset();
+              setSelectedDifficulty(e.target.value as SelectedDifficulty | '');
+            }}
+          >
+            <option value="">Select difficulty...</option>
+            {difficultyOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <p className="muted" id="difficulty-help">
+          Choose difficulty using your own judgement. Marks and question content do not determine
+          it.
+        </p>
+        {legacyDifficulty && (
+          <p className="notice">
+            Difficulty contained in the JSON is not used. Select difficulty manually.
+          </p>
+        )}
+        {difficultyError && (
+          <p id="difficulty-error" role="alert" className="error">
+            {difficultyError}
+          </p>
+        )}
         <p className="muted" id="import-limits">
           Package ≤ 5 MiB. Up to 8 visuals, combined ≤ 3 MiB. Use schemaVersion 1 and kind
           matriculation-physics-question. No API token is needed.
@@ -187,6 +253,12 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
         <>
           <section className="panel">
             <h2>Validation results</h2>
+            <p>
+              DIFFICULTY:{' '}
+              {tax.difficulties
+                .find((d) => d.id === preview.document.question.difficultyId)
+                ?.name.toUpperCase()}
+            </p>
             <p role="status">
               Validated structure, classification and mark totals. Embedded hashes verified locally;
               the server verifies binary signatures and hashes when importing.

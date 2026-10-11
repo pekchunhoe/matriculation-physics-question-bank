@@ -7,8 +7,9 @@ import { createApp } from '../../server/app.js';
 import { LocalAssetStorage } from '../../server/local-asset-storage.js';
 import { setup } from '../fixtures.js';
 import { seedAdminSession } from '../auth-fixture.js';
+import type { Bank } from '../../server/database.js';
 
-type Fixture = { origin: string; cookie: string };
+type Fixture = { origin: string; cookie: string; bank: Bank };
 export const test = base.extend<{ importFixture: Fixture }>({
   importFixture: async ({ browserName }, use) => {
     const { bank } = await setup(),
@@ -23,7 +24,7 @@ export const test = base.extend<{ importFixture: Fixture }>({
     if (!address || typeof address === 'string')
       throw new Error('Isolated browser server unavailable');
     try {
-      await use({ origin: `http://127.0.0.1:${address.port}`, cookie });
+      await use({ origin: `http://127.0.0.1:${address.port}`, cookie, bank });
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve())),

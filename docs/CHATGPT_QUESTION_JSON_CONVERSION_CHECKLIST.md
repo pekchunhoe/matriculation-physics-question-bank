@@ -1,5 +1,11 @@
 # ChatGPT PDF-to-Question JSON conversion checklist
 
+Question difficulty is not inferred from marks or question content. The final Easy/Medium/Hard classification is selected manually by the administrator during JSON import.
+
+New Question JSON files do not need to provide difficulty. ChatGPT authors educational content and omits difficulty; the administrator chooses it using their own judgement. An optional legacy `difficulty` string (1–100 characters) remains accepted in schemaVersion 1 but is ignored, never preselects the dropdown and never overrides the administrator. No AI or heuristic assigns it.
+
+Physics PDF → ChatGPT extracts question → ONE Question JSON → Admin website → Upload JSON → ADMIN SELECTS Easy / Medium / Hard → Validate & Preview → review → Import as Draft.
+
 Read `docs/QUESTION_JSON_AUTHORING_STANDARD.md`, `docs/question-json-import.schema.json` and `examples/question-import/GOLDEN_QUESTION_IMPORT_REFERENCE.json`. The master JSON/PDF are design/content references; their legacy field names are not accepted upload syntax. Runtime validation is the final authority. Deliver one file without requiring Codex per question, provided the ChatGPT environment can inspect PDFs, extract visual bytes, calculate hashes and create a downloadable JSON file.
 
 1. Read AND render the selected PDF pages, including answer pages. Visually inspect notation, hierarchy, labels and every figure; text extraction alone is insufficient.
@@ -14,7 +20,7 @@ Read `docs/QUESTION_JSON_AUTHORING_STANDARD.md`, `docs/question-json-import.sche
 10. Determine the canonical curriculum version using current website taxonomy or a supplied verified taxonomy. Do not infer it from paper year.
 11. Use permanent `Semester 1` or `Semester 2` identity.
 12. Resolve exact chapter/topic/subtopic names under the correct parents. Use `subtopic: null` when none exists; never invent taxonomy. Preserve meaningful original figure labels inside educational visuals.
-13. Determine difficulty and use the exact database spelling (`Medium`, not master `MEDIUM`, for the current medium level).
+13. Omit difficulty from new packages. The administrator selects Easy, Medium or Hard on the website; do not decide or infer it from marks or content.
 14. Preserve exact total and part/step mark allocations as integers. Supply a reasonable positive `estimatedMinutes` and supported `questionType`.
 15. Preserve part hierarchy using flat local IDs, `parentId`, labels and sibling order. No-part questions use `parts: []` and `partId: null` solutions.
 16. Convert ALL mathematics accurately to LaTeX. Use `$...$`/`$$...$$` in prose, undelimited pure math fields, and escaped JSON backslashes. Convert legacy Markdown/`\(...\)` appropriately. Malformed math must fail validation; do not create equation images.
@@ -31,9 +37,9 @@ Read `docs/QUESTION_JSON_AUTHORING_STANDARD.md`, `docs/question-json-import.sche
 27. Put question visuals only in question/part content blocks. Every asset needs one explicit placement; neutral `assetId` references equal package asset keys.
 28. Put answer/FBD visuals only in answer solution/step blocks, beside or directly near relevant force equations. Preserve explicit block order and original bytes. Step/image print rules avoid separation when reasonably possible; oversized steps may flow across pages. Answer-only visuals never appear in question-only output.
 29. Do NOT embed the whole source PDF or its export/layout contract. Canonical storage is structured content and private original visual assets.
-30. Validate all mark totals: parents equal direct children, roots equal question total, each leaf's steps equal leaf marks; do not double count parent aggregates. Validate syntax, all LaTeX, local references, asset ownership and exact taxonomy/difficulty. The machine schema alone cannot check every rule.
+30. Validate all mark totals: parents equal direct children, roots equal question total, each leaf's steps equal leaf marks; do not double count parent aggregates. Validate syntax, all LaTeX, local references, asset ownership and exact taxonomy. Difficulty is a separate administrator selection. The machine schema alone cannot check every rule.
 31. Output ONE self-contained `.json` with only official fields, not a real-source legacy master clone. Include no source numbering, ruled work space, set/year/course code/provenance. Review the rendered content against the PDF before upload.
 
-On the website: Paste JSON or Upload one .json → Validate & Preview → review question, classification, difficulty, totals, parts, equations, solutions, hints and every visual → acknowledge review → Import as Draft. This does not approve/publish content. The importer verifies byte integrity, not that an image originated from the PDF; preparation and human review establish origin.
+On the website: Paste JSON or Upload one .json → select Difficulty manually → Validate & Preview → review question, classification, difficulty, totals, parts, equations, solutions, hints and every visual → acknowledge review → Import as Draft. This does not approve/publish content. The importer verifies byte integrity, not that an image originated from the PDF; preparation and human review establish origin.
 
 Set preview/export generates dynamic Question 1, 2, 3 strictly from current selected order, with the same mapping for answers and page footers; reorder/removal renumbers without database writes. Browser Print / Save as PDF uses the A4 Master-style canonical header/topic/difficulty/marks, ordered steps, marking codes, adjacent optional student hints, final totals and page counters. No working space, SP015/SP025, source set/year, provenance or source question numbers are generated. Export uses zero AI calls/tokens, and stored visual bytes are unchanged. Migration 005 passed separately authorized production backup and preservation checks; see the [rollout report](../MASTER_FORMAT_FIDELITY_PRODUCTION_ROLLOUT_REPORT.md) for application release status. No real import is authorized by implementation or rollout.

@@ -264,16 +264,26 @@ export function createApp(
     limits: {
       fileSize: importLimits.assetBytes,
       files: importLimits.assetCount,
-      fields: 2,
+      fields: 3,
       fieldSize: importLimits.manifestBytes,
       fieldNameSize: 80,
-      parts: importLimits.assetCount + 2,
+      parts: importLimits.assetCount + 3,
     },
   });
   app.post('/api/admin/questions/import/validate', async (req, res) => {
-    const input = z.object({ manifest: z.unknown() }).strict().safeParse(req.body);
-    if (!input.success) throw new BankError('package: Send only the structured manifest');
-    res.json(await questionImport.validate(input.data.manifest, identities.get(req)!));
+    const input = z
+      .object({ manifest: z.unknown(), selectedDifficulty: z.unknown().optional() })
+      .strict()
+      .safeParse(req.body);
+    if (!input.success)
+      throw new BankError('package: Send the structured manifest and selected difficulty');
+    res.json(
+      await questionImport.validate(
+        input.data.manifest,
+        identities.get(req)!,
+        input.data.selectedDifficulty,
+      ),
+    );
   });
   app.post(
     '/api/admin/questions/import/commit',
@@ -288,10 +298,15 @@ export function createApp(
     importUpload.any(),
     async (req, res) => {
       const input = z
-        .object({ manifest: z.string(), token: z.string().max(2000) })
+        .object({
+          manifest: z.string(),
+          token: z.string().max(2000),
+          selectedDifficulty: z.unknown().optional(),
+        })
         .strict()
         .safeParse(req.body);
-      if (!input.success) throw new BankError('package: Send manifest and validation token');
+      if (!input.success)
+        throw new BankError('package: Send manifest, validation token and selected difficulty');
       let manifest: unknown;
       try {
         manifest = JSON.parse(input.data.manifest);
@@ -303,7 +318,15 @@ export function createApp(
         throw new BankError('assets: Combined binary data exceeds 3 MiB', 413);
       res
         .status(201)
-        .json(await questionImport.commit(manifest, input.data.token, files, identities.get(req)!));
+        .json(
+          await questionImport.commit(
+            manifest,
+            input.data.token,
+            files,
+            identities.get(req)!,
+            input.data.selectedDifficulty,
+          ),
+        );
     },
   );
   app.post('/api/import/validate', async (req, res) => {

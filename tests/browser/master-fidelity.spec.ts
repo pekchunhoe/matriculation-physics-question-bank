@@ -176,6 +176,7 @@ test('admin importer preview shows first-class codes and ordered hints inside th
   };
   await page.goto('/import/question-json');
   await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
+  await page.getByLabel('Difficulty', { exact: true }).selectOption('Medium');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.locator('.answer-scheme .marking-code')).toHaveCount(5);
   await expect(

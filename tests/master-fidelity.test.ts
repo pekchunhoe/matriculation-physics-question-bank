@@ -49,7 +49,7 @@ test('golden reference demonstrates all new capabilities with byte-valid synthet
     'utf8',
   );
   const doc = questionPackageSchema.parse(JSON.parse(text));
-  assert.equal(doc.difficulty, 'Medium');
+  assert.equal(doc.difficulty, undefined);
   assert.equal(
     doc.solutions.flatMap((s) => s.steps).filter((s) => s.markingCode && s.id).length,
     5,
@@ -321,9 +321,9 @@ for (const adapter of ['sqlite', 'libsql'] as const)
       pkg.hints = master.hints;
       const { manifest } = splitPackage(pkg);
       const service = new QuestionJsonImportService(bank);
-      const preview = await service.validate(manifest, admin);
+      const preview = await service.validate(manifest, admin, 'Easy');
       assert.equal(preview.document.solutions[0].steps[0].markingCode, 'GJU1');
-      const imported = await service.commit(manifest, preview.token, [], admin);
+      const imported = await service.commit(manifest, preview.token, [], admin, 'Easy');
       const canonical = await bank.document(imported.id);
       assert.equal(canonical.solutions[0].steps[0].markingCode, 'GJU1');
       assert.equal(canonical.hints[0].solutionStepId, 'step-0');

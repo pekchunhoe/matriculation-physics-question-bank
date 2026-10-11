@@ -1,12 +1,18 @@
 # Question JSON authoring standard
 
+Question difficulty is not inferred from marks or question content. The final Easy/Medium/Hard classification is selected manually by the administrator during JSON import.
+
+New Question JSON files do not need to provide difficulty. ChatGPT authors educational content and omits difficulty; the administrator chooses it using their own judgement. An optional legacy `difficulty` string (1–100 characters) remains accepted in schemaVersion 1 but is ignored, never preselects the dropdown and never overrides the administrator. No AI or heuristic assigns it.
+
+Physics PDF → ChatGPT extracts question → ONE Question JSON → Admin website → Upload JSON → ADMIN SELECTS Easy / Medium / Hard → Validate & Preview → review → Import as Draft.
+
 Permanent design reference: `reference/Master JSON Format.json` and `reference/Master PDF Format.pdf`. They define desired educational features and presentation, subject to the exclusions below. They are **not uploadable schema examples**. Generate the accepted machine syntax from `docs/question-json-import.schema.json`; the shared/server runtime validators remain authoritative for import validity. JSON Schema cannot express all LaTeX, marks, hierarchy, classification, byte-integrity and lifecycle checks.
 
 Use this document with `docs/CHATGPT_QUESTION_JSON_CONVERSION_CHECKLIST.md`, the machine schema and `examples/question-import/GOLDEN_QUESTION_IMPORT_REFERENCE.json`. The compatibility assessment is `QUESTION_JSON_MASTER_FORMAT_COMPATIBILITY_AUDIT.md`. Version 1 currently reproduces only part of the master presentation; do not claim full compatibility.
 
 ## Permanent content policy
 
-Keep the stem, part hierarchy, exact marks, difficulty, canonical classification, physics instructions, given quantities, worked equations, reasoning, final results, progressive hints and meaningful original visuals. For every real PDF question, the PDF's question/answer content is authoritative. Verify the physics and the rendered mathematics against the source; never repair malformed LaTeX using AI inside the importer.
+Keep the stem, part hierarchy, exact marks, canonical classification, physics instructions, given quantities, worked equations, reasoning, final results, progressive hints and meaningful original visuals. For every real PDF question, the PDF's question/answer content is authoritative. Verify the physics and the rendered mathematics against the source; never repair malformed LaTeX using AI inside the importer.
 
 Discard original source question number, source-derived question ID, source set/name/order, paper series, source year/session, source course codes such as SP015/SP025, PDF filename/hash/pages/xrefs and source-paper identity. Do not move discarded data into tags, captions, title, prose, notes or IDs. Do not embed the full PDF, its export contract, working-space rules or blank-space reservation. Retain legitimate curriculum-version classification independently of source year/session. Do not alter historical curriculum metadata to enforce this authoring policy.
 
@@ -16,7 +22,7 @@ Omit optional `question.questionCode` for normal new imports. The application ge
 
 ## One-file package
 
-Top-level required properties are `schemaVersion: 1`, `kind: "matriculation-physics-question"`, `classification`, `difficulty`, `question`, `parts`, `solutions`, `hints`, `assets`, `tags`. Use arrays even when empty. Unknown properties are rejected. This package is different from database export JSON; do not paste the legacy master structure or a saved internal document.
+Top-level required properties are `schemaVersion: 1`, `kind: "matriculation-physics-question"`, `classification`, `question`, `parts`, `solutions`, `hints`, `assets`, `tags`. Use arrays even when empty. Unknown properties are rejected. This package is different from database export JSON; do not paste the legacy master structure or a saved internal document.
 
 Classification requires:
 
@@ -32,7 +38,7 @@ Classification requires:
 
 Use the exact available, non-retired version code and exact chapter/topic/subtopic names under their parents. The semester must be exactly `Semester 1` or `Semester 2`; no source-code dependency exists. `subtopic` is required but nullable. Never invent a taxonomy entry. Current public taxonomy has no subtopics; use `null` until a legitimate one exists. Authoring requires an up-to-date taxonomy supplied by the user or obtained from the website; a static schema alone cannot determine classifications. Do not guess a newer curriculum from the source-paper year. If unresolved, ask for the actual taxonomy before finalizing the file.
 
-Difficulty is an exact database name, currently `Easy`, `Medium`, or `Hard`. The master label `MEDIUM` maps to `Medium`; uppercase `MEDIUM` fails current server resolution. The golden file demonstrates medium difficulty. Check the live options if they change.
+The required website Difficulty dropdown starts at `Select difficulty...` and accepts `Easy`, `Medium`, or `Hard`. The golden JSON omits difficulty; select Medium manually for its website demonstration. Older synthetic examples retain the legacy field to exercise compatibility, not to demonstrate preferred new authoring.
 
 `question` requires `title` (1–300 characters), `scenario` (prose, possibly empty if blocks/parts provide content), `totalMarks` (positive integer ≤10000), `estimatedMinutes` (positive integer ≤10000) and `questionType` (`structured`, `multiple_choice`, `short_answer`, `essay`). Estimated time is author judgement, not a source provenance field. Optional `blocks` holds ordered content. Avoid repeating the same prose in both `scenario` and blocks: both render.
 
@@ -104,7 +110,7 @@ Base64 must be canonical with correct padding, no whitespace and no `data:` URL 
 
 Limits: JSON ≤5 MiB UTF-8 including Base64; manifest without Base64 ≤384 KiB; at most 8 assets; each and combined decoded asset bytes ≤3 MiB. Compress package overhead without changing educational pixels, or report a size blocker. Do not discard a diagram to pass limits.
 
-Website workflow: paste/upload ONE `.json` → browser parse/strict schema → Base64 decode/byte count/SHA verification → server Validate & Preview → visual/mark/classification/hint review → review checkbox → Import as Draft. Preview is read-only; no Blob upload yet. It cannot authoritatively certify binary signatures until commit. Editing invalidates the plan.
+Website workflow: paste/upload ONE `.json` → select Difficulty manually → browser parse/strict schema → Base64 decode/byte count/SHA verification → server Validate & Preview → visual/mark/classification/hint review → review checkbox → Import as Draft. Preview is read-only; no Blob upload yet. It cannot authoritatively certify binary signatures until commit. Editing JSON or changing difficulty invalidates the preview and review acknowledgement; validate again. The server signs the selected difficulty and canonical record state and rejects a different selection at commit, including retries. Commit uses only the signed selection and existing canonical difficultyId.
 
 Commit sends a manifest without Base64 plus decoded binary files automatically. The server independently verifies authentication/admin authorization, CSRF, signed admin-bound plan, manifest/taxonomy binding, 15-minute expiry, role/size/count, byte length, actual signatures, multipart MIME and SHA-256 before storage. Current raster signature checks inspect magic bytes; they do not fully decode/validate an image or prove its PDF origin. Human source review is mandatory.
 

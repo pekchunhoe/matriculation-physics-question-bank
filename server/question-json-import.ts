@@ -14,6 +14,8 @@ import {
   importLimits,
   importManifestSchema,
   validationMessage,
+  selectedDifficultySchema,
+  type SelectedDifficulty,
   type ImportManifest,
   type ImportPreview,
 } from '../shared/question-import.js';
@@ -44,6 +46,7 @@ const planSchema = z
     adminId: z.string(),
     digest: z.string(),
     taxonomyDigest: z.string(),
+    selectedDifficulty: selectedDifficultySchema,
     expiresAt: z.number().int(),
   })
   .strict();
@@ -77,7 +80,21 @@ export class QuestionJsonImportService {
       .update('question-json-plan-v1\0' + payload)
       .digest('base64url');
   }
-  private async verify(token: unknown, doc: ImportManifest, admin: AdminIdentity): Promise<Plan> {
+  private selection(input: unknown): SelectedDifficulty {
+    if (input === undefined || input === null || input === '')
+      throw new BankError(
+        'selectedDifficulty: Select a difficulty before validating this question.',
+      );
+    const parsed = selectedDifficultySchema.safeParse(input);
+    if (!parsed.success) throw new BankError('selectedDifficulty: Select Easy, Medium or Hard.');
+    return parsed.data;
+  }
+  private async verify(
+    token: unknown,
+    doc: ImportManifest,
+    admin: AdminIdentity,
+    selectedDifficulty: SelectedDifficulty,
+  ): Promise<Plan> {
     if (typeof token !== 'string' || token.length > 2000)
       throw new BankError('token: Invalid validation plan', 409);
     const [payload, signature, extra] = token.split('.');
@@ -99,11 +116,15 @@ export class QuestionJsonImportService {
     } catch {
       throw new BankError('token: Invalid validation plan', 409);
     }
-    if (plan.adminId !== admin.id || plan.digest !== hash(doc))
-      throw new BankError('token: Content changed; validate and preview again', 409);
+    if (
+      plan.adminId !== admin.id ||
+      plan.selectedDifficulty !== selectedDifficulty ||
+      plan.digest !== hash({ manifest: doc, selectedDifficulty })
+    )
+      throw new BankError('token: Content or difficulty changed; validate and preview again', 409);
     return plan;
   }
-  private async resolve(doc: ImportManifest, id: string) {
+  private async resolve(doc: ImportManifest, id: string, selectedDifficulty: SelectedDifficulty) {
     if (
       doc.question.questionCode &&
       (await this.bank.one(
@@ -145,9 +166,9 @@ export class QuestionJsonImportService {
       doc.classification.subtopic === null
         ? null
         : exact(tax.subtopics, doc.classification.subtopic, topic.id, 'subtopic');
-    const difficulties = tax.difficulties.filter((d) => d.name === doc.difficulty);
+    const difficulties = tax.difficulties.filter((d) => d.name === selectedDifficulty);
     if (difficulties.length !== 1)
-      throw new BankError('difficulty: Expected one exact difficulty name');
+      throw new BankError('selectedDifficulty: Expected exactly one canonical difficulty record');
     const difficulty = difficulties[0];
     const kind = {
       question_diagram: 'physics_diagram',
@@ -224,12 +245,13 @@ export class QuestionJsonImportService {
       })),
     });
   }
-  async validate(input: unknown, admin: AdminIdentity): Promise<ImportPreview> {
+  async validate(input: unknown, admin: AdminIdentity, selection: unknown): Promise<ImportPreview> {
+    const selectedDifficulty = this.selection(selection);
     const doc = this.manifest(input),
       id = randomUUID();
     if (doc.assets.length && !this.assets)
       throw new AssetStorageError('Asset storage is not configured');
-    const resolved = await this.resolve(doc, id);
+    const resolved = await this.resolve(doc, id, selectedDifficulty);
     const warnings: string[] = [];
     for (const a of doc.assets) {
       if (!a.alt)
@@ -256,7 +278,8 @@ export class QuestionJsonImportService {
     const plan: Plan = {
       id,
       adminId: admin.id,
-      digest: hash(doc),
+      digest: hash({ manifest: doc, selectedDifficulty }),
+      selectedDifficulty,
       taxonomyDigest: resolved.taxonomyDigest,
       expiresAt,
     };
@@ -311,14 +334,21 @@ export class QuestionJsonImportService {
       throw new BankError('token: Import receipt conflicts with plan', 409);
     return { id: String(receipt.question_id), version: 1, status: 'draft', alreadyImported: true };
   }
-  async commit(input: unknown, token: unknown, files: ImportFile[], admin: AdminIdentity) {
+  async commit(
+    input: unknown,
+    token: unknown,
+    files: ImportFile[],
+    admin: AdminIdentity,
+    selection: unknown,
+  ) {
+    const selectedDifficulty = this.selection(selection);
     const doc = this.manifest(input),
-      plan = await this.verify(token, doc, admin);
+      plan = await this.verify(token, doc, admin, selectedDifficulty);
     const previous = await this.previous(plan, admin);
     if (previous) return previous;
     if (plan.expiresAt <= this.now())
       throw new BankError('token: Preview expired; validate and preview again', 409);
-    let resolved = await this.resolve(doc, plan.id);
+    let resolved = await this.resolve(doc, plan.id, plan.selectedDifficulty);
     if (resolved.taxonomyDigest !== plan.taxonomyDigest)
       throw new BankError('classification: Curriculum changed; validate and preview again', 409);
     if (
@@ -366,7 +396,7 @@ export class QuestionJsonImportService {
         if (previous) return previous;
         if (plan.expiresAt <= this.now())
           throw new BankError('token: Preview expired; validate and preview again', 409);
-        resolved = await this.resolve(doc, plan.id);
+        resolved = await this.resolve(doc, plan.id, plan.selectedDifficulty);
         if (resolved.taxonomyDigest !== plan.taxonomyDigest)
           throw new BankError(
             'classification: Curriculum changed; validate and preview again',

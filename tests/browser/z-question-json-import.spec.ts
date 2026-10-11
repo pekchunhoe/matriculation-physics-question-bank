@@ -26,6 +26,7 @@ async function browserPackage(request: APIRequestContext, visual = false) {
 async function preview(page: Page, doc: QuestionPackage) {
   await page.goto('/import/question-json');
   await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
+  await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.getByRole('heading', { name: 'Validation results' })).toBeVisible();
 }
@@ -61,6 +62,7 @@ test('upload one JSON file uses the same preview and embedded assets need no sep
     buffer: Buffer.from(JSON.stringify(doc)),
   });
   await expect(page.getByLabel('Paste Question JSON')).toHaveValue(JSON.stringify(doc));
+  await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.locator('.paper img')).toHaveCount(1);
   await expect(page.locator('.answer-scheme img')).toHaveCount(1);
@@ -100,9 +102,9 @@ const rejectionCases: [string, (d: QuestionPackage) => void, RegExp][] = [
     /classification.topic/,
   ],
   [
-    'invalid difficulty',
+    'invalid legacy difficulty type',
     (d) => {
-      d.difficulty = 'EASY';
+      d.difficulty = 42 as never;
     },
     /difficulty/,
   ],
@@ -149,6 +151,7 @@ for (const [name, mutate, path] of rejectionCases)
     mutate(doc);
     await page.goto('/import/question-json');
     await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
+    await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
     await page.getByRole('button', { name: 'Validate & Preview' }).click();
     await expect(page.getByRole('alert')).toContainText(path);
     await expect(page.getByRole('button', { name: 'Import as Draft' })).toHaveCount(0);
@@ -156,6 +159,7 @@ for (const [name, mutate, path] of rejectionCases)
 test('invalid JSON is readable and associated with the paste field', async ({ page }) => {
   await page.goto('/import/question-json');
   await page.getByLabel('Paste Question JSON').fill('{broken');
+  await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.getByRole('alert')).toContainText('Invalid JSON');
   await expect(page.getByLabel('Paste Question JSON')).toHaveAttribute('aria-invalid', 'true');
@@ -217,6 +221,7 @@ test('double click creates one draft; lost response retry returns same ID; draft
     multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = {
       manifest: JSON.stringify(manifest),
       token: plan.token,
+      selectedDifficulty: 'Easy',
     };
   for (const f of files)
     multipart[f.fieldname] = { name: f.fieldname + '.png', mimeType: f.mimetype, buffer: f.buffer };

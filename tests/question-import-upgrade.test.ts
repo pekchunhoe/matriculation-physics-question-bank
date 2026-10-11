@@ -215,8 +215,8 @@ for (const adapter of ['sqlite', 'libsql'] as const)
       const row = await bank.one('SELECT id FROM admins WHERE email=?', testEmail);
       const admin = { id: String(row!.id), email: testEmail, role: 'admin' as const };
       const service = new QuestionJsonImportService(bank, new LocalAssetStorage(directory));
-      const plan = await service.validate(manifest, admin);
-      const result = await service.commit(manifest, plan.token, [], admin);
+      const plan = await service.validate(manifest, admin, 'Easy');
+      const result = await service.commit(manifest, plan.token, [], admin, 'Easy');
       assert.equal((await bank.document(result.id)).question.status, 'draft');
       assert.equal((await bank.document(result.id)).solutions[0].partId, null);
       assert.deepEqual(await bank.document('existing'), doc);

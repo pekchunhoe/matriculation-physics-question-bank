@@ -2,6 +2,10 @@
 import { partSchema, solutionSchema, hintSchema, validateStepHints } from './schema.js';
 import { prose, blocksSchema, visualMetadataSchema } from './content.js';
 
+export const difficultyOptions = ['Easy', 'Medium', 'Hard'] as const;
+export const selectedDifficultySchema = z.enum(difficultyOptions);
+export type SelectedDifficulty = z.infer<typeof selectedDifficultySchema>;
+
 export const importLimits = {
   packageBytes: 5 * 1024 * 1024,
   manifestBytes: 384 * 1024,
@@ -34,7 +38,8 @@ const packageFields = {
       subtopic: z.string().min(1).max(200).nullable(),
     })
     .strict(),
-  difficulty: z.string().min(1).max(100),
+  // Legacy authoring field; only the separate administrator selection is authoritative.
+  difficulty: z.string().min(1).max(100).optional(),
   question: z
     .object({
       questionCode: z

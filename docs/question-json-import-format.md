@@ -1,17 +1,23 @@
 ﻿# Self-contained Question JSON import format (v1)
 
-The admin workflow at `/import/question-json` accepts **one question in one JSON file**, including its prepared image bytes. Paste JSON and Upload one `.json` file use the same pipeline. Click **Validate & Preview**, inspect the rendered question, marking scheme, hints and visuals, acknowledge the review, then click **Import as Draft**. Publication remains a separate existing admin action. Neither preparation nor importing is performed by an AI service on this website. Normal importing uses zero AI calls or tokens.
+Question difficulty is not inferred from marks or question content. The final Easy/Medium/Hard classification is selected manually by the administrator during JSON import.
+
+New Question JSON files do not need to provide difficulty. ChatGPT authors educational content and omits difficulty; the administrator chooses it using their own judgement. An optional legacy `difficulty` string (1–100 characters) remains accepted in schemaVersion 1 but is ignored, never preselects the dropdown and never overrides the administrator. No AI or heuristic assigns it.
+
+Physics PDF → ChatGPT extracts question → ONE Question JSON → Admin website → Upload JSON → ADMIN SELECTS Easy / Medium / Hard → Validate & Preview → review → Import as Draft.
+
+The admin workflow at `/import/question-json` accepts **one question in one JSON file**, including its prepared image bytes. Paste JSON and Upload one `.json` file use the same pipeline. Select **Difficulty** manually (the initial value is **Select difficulty...**), then click **Validate & Preview**, inspect the rendered question, marking scheme, hints and visuals, acknowledge the review, then click **Import as Draft**. Publication remains a separate existing admin action. Neither preparation nor importing is performed by an AI service on this website. Normal importing uses zero AI calls or tokens.
 
 The canonical validator is `shared/question-import.ts`. The generated machine-readable schema is [question-json-import.schema.json](question-json-import.schema.json). Regenerate it with `npm run schema:generate`; `npm run schema:check` detects drift. JSON Schema describes field types and bounds; the runtime additionally checks LaTeX, references, hierarchy, marks, placements, exact taxonomy, signatures and hashes.
 
 Complete ready-to-adapt examples:
 
-- [Golden Master reference](../examples/question-import/GOLDEN_QUESTION_IMPORT_REFERENCE.json): multipart Medium question, LaTeX, a question diagram, two answer FBDs, five marking codes and six explicitly step-linked hints. Synthetic assets only.
+- [Golden Master reference](../examples/question-import/GOLDEN_QUESTION_IMPORT_REFERENCE.json): multipart question, LaTeX, a question diagram, two answer FBDs, five marking codes and six explicitly step-linked hints. Difficulty is omitted; the administrator selects Medium for its demonstration. Synthetic assets only.
 
-- [Dimensional analysis](../examples/question-import/dimensional-analysis.json): authentic no-part shape, 2 marks, four hints, no images.
-- [Synthetic supported block](../examples/question-import/synthetic-visual.json): two embedded PNGs, one question visual and one answer FBD. Images were drawn locally for testing and contain no extracted curriculum material.
+- [Dimensional analysis](../examples/question-import/dimensional-analysis.json): legacy compatibility fixture with ignored difficulty, authentic no-part shape, 2 marks, four hints, no images.
+- [Synthetic supported block](../examples/question-import/synthetic-visual.json): legacy compatibility fixture with ignored difficulty, two embedded PNGs, one question visual and one answer FBD. Images were drawn locally for testing and contain no extracted curriculum material.
 
-Both examples target the current curriculum by name. They are files/fixtures only; neither has been imported into production. Isolated tests substitute their own existing test taxonomy.
+These examples target the current curriculum by name. They are files/fixtures only; none has been imported into production. Isolated tests substitute their own existing test taxonomy.
 
 ## Envelope
 
@@ -28,7 +34,6 @@ All objects are strict. Unknown properties are errors, including `status`, array
     "topic": "1.1 Dimensions of physical quantities",
     "subtopic": null
   },
-  "difficulty": "Easy",
   "question": {
     "title": "Dimensional analysis",
     "scenario": "Show that the following equation is homogeneous.",
@@ -75,7 +80,7 @@ The abbreviated solution above demonstrates field syntax. Use the full example f
 | `classification.semester`              | Exactly `Semester 1` or `Semester 2`, within that version and its course.                                                                                                                                       |
 | `classification.chapter`, `topic`      | Exact existing names under their specified parents, max 200 characters each.                                                                                                                                    |
 | `classification.subtopic`              | Exact existing name under the topic, or required `null` for no subtopic.                                                                                                                                        |
-| `difficulty`                           | Exact existing difficulty name, e.g. `Easy`, `Medium`, `Hard`, max 100 characters.                                                                                                                              |
+| `difficulty`                           | Optional legacy string, 1–100 characters. Ignored; omit in new packages. Admin selection is separate.                                                                                                           |
 | `question.questionCode`                | Optional stable unique code, 3–80 uppercase letters/digits/hyphens, starting with a letter/digit. Omit to generate a plan-specific stable code. An existing code is an error; this workflow creates new drafts. |
 | `question.title`                       | Required nonempty string, max 300 characters.                                                                                                                                                                   |
 | `question.scenario`                    | Required prose string, may be empty when blocks/parts carry content.                                                                                                                                            |
@@ -256,3 +261,9 @@ Current selection order creates one authoritative ephemeral numbering plan for q
 Print / Save as PDF renders canonical structured content and canonical private assets in the browser, using A4 portrait (210 × 297 mm), 16 mm top / 19 mm side / 18 mm bottom margins, a `Matriculation Physics | Semester 1/2` header, topic/difficulty/marks, centered aspect-preserving diagrams, ordered parts, matching answer sections, restrained marking codes, adjacent step hints and `Total: N marks`. Running footers identify the same dynamically numbered question and browser page counters. Chromium page margin boxes repeat references over long answers; other browsers may vary. Image/step break rules and widow/orphan rules preserve readability; oversized steps may flow. Equations stay KaTeX browser text and scale to available width without rasterization. Use aligned LaTeX for unusually long derivations.
 
 Question-only mode excludes solutions, marking codes, ALL hints and answer-only diagrams/FBDs, even when a stale hints option is true. Answer mode retains the existing optional hints checkbox; general and part hints appear before their relevant answer scope. No source number, student working space/ruled lines, SP015/SP025, source set/year or provenance is generated. Stored asset bytes are displayed unchanged using CSS scaling. Export calls browser `window.print()` and needs zero OpenAI/LLM/image-generation calls or server AI tokens. It does not replay or require the original PDF. Public approved-only visibility, draft/asset privacy, authorization, CSRF and immutable history remain in force.
+
+## Administrator difficulty request contract
+
+The authenticated validation request is `{ "manifest": { ... }, "selectedDifficulty": "Medium" }`. `selectedDifficulty` is a separate required choice, not a portable-package property or database ID. Commit multipart contains `manifest`, `token`, `selectedDifficulty`, and each binary asset. Only Easy, Medium or Hard is accepted; missing/unknown values and missing/ambiguous canonical references fail before storage writes. The signed plan binds manifest, administrator selection and resolved taxonomy/difficulty state. Changing selection requires a new preview; mismatched commits and retries are rejected. Successful unchanged retries remain idempotent.
+
+The preview displays the resolved canonical value as `DIFFICULTY: MEDIUM`. Canonical difficulty drives browsing, filters, normal admin versioned editing and Master PDF presentation. No extra database field or migration is required. Existing question data is unaffected. Validation is read-only and all imports remain private drafts under the existing admin/CSRF controls.
