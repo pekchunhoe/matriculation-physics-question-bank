@@ -10,6 +10,7 @@ import { validateUpload } from '../../server/asset-validation.js';
 import type { QuestionPackage } from '../../shared/question-import.js';
 import type { QuestionDocument } from '../../shared/schema.js';
 import { seedAdminSession } from '../auth-fixture.js';
+import type { Bank } from '../../server/database.js';
 
 export const layoutCases = [
   'no-diagram',
@@ -26,10 +27,10 @@ export const layoutCases = [
   'answer-only-fbd',
 ] as const;
 export const test = base.extend<{
-  masterFixture: { origin: string; ids: Record<string, string>; cookie: string };
+  masterFixture: { origin: string; ids: Record<string, string>; cookie: string; bank: Bank };
 }>({
   masterFixture: async ({ browserName }, use) => {
-    const { bank, fixture } = await setup();
+    const { bank, fixture, c1, momentum } = await setup();
     const directory = mkdtempSync(join(tmpdir(), `master-${browserName}-`));
     const storage = new LocalAssetStorage(directory);
     const ids: Record<string, string> = {};
@@ -145,6 +146,61 @@ export const test = base.extend<{
           for (const s of doc.solutions) for (const t of s.steps) delete t.markingCode;
         ids[name] = (await bank.create(doc, 'Disposable synthetic layout fixture', null, true)).id;
       }
+      await bank.run('UPDATE chapters SET sort_order=1 WHERE id=?', c1);
+      await bank.run('UPDATE topics SET sort_order=1 WHERE id=?', momentum);
+      const chapter2 = await bank.addTaxon('chapters', 'TEST Z Chapter Two', 'semester-1', true);
+      const chapter4 = await bank.addTaxon('chapters', 'TEST A Chapter Four', 'semester-1', true);
+      await bank.run('UPDATE chapters SET sort_order=2 WHERE id=?', chapter2);
+      await bank.run('UPDATE chapters SET sort_order=4 WHERE id=?', chapter4);
+      const topic12 = await bank.addTaxon('topics', 'TEST A Topic 1.2', c1, true);
+      const topic23 = await bank.addTaxon('topics', 'TEST Z Topic 2.3', chapter2, true);
+      const topic42 = await bank.addTaxon('topics', 'TEST A Topic 4.2', chapter4, true);
+      await bank.run('UPDATE topics SET sort_order=2 WHERE id=?', topic12);
+      const sub1 = await bank.addTaxon('subtopics', 'TEST Z First Subtopic', momentum, true);
+      const sub2 = await bank.addTaxon('subtopics', 'TEST A Second Subtopic', momentum, true);
+      await bank.run('UPDATE subtopics SET sort_order=1 WHERE id=?', sub1);
+      await bank.run('UPDATE subtopics SET sort_order=2 WHERE id=?', sub2);
+      for (const [name, topic, subtopic] of [
+        ['order-A', momentum, null],
+        ['order-B', topic12, null],
+        ['order-C', topic23, null],
+        ['order-D', topic42, null],
+        ['sub-none', momentum, null],
+        ['sub-first', momentum, sub1],
+        ['sub-second', momentum, sub2],
+        ...Array.from({ length: 5 }, (_, i) => ['short-' + i, momentum, null]),
+        ['unsupported', momentum, null],
+      ] as [string, string, string | null][]) {
+        const doc = fixture('EXPORT-' + name.toUpperCase(), topic, 'medium');
+        doc.question.subtopicId = subtopic;
+        doc.question.scenario = name === 'unsupported' ? '$\\cancel{x}$' : 'STEM ' + name;
+        doc.parts = [];
+        doc.solutions = [
+          {
+            partId: null,
+            solution: 'ANSWER ' + name,
+            equationLatex: '',
+            teacherNotes: 'PRIVATE NOTE',
+            steps: [
+              {
+                id: 'step',
+                number: 1,
+                order: 0,
+                marks: 2,
+                markingCode: 'JU1',
+                explanation: 'REASON ' + name,
+                equationLatex: 'F_c=\\frac{mv^2}{r}',
+                working: 'FINAL ' + name,
+                markingPoint: '',
+              },
+            ],
+          },
+        ];
+        doc.hints = [
+          { id: 'hint', partId: null, solutionStepId: 'step', text: 'HINT ' + name, order: 0 },
+        ];
+        ids[name] = (await bank.create(doc, 'Disposable export fixture', null, true)).id;
+      }
       const cookie = await seedAdminSession(bank);
       const app = createApp(bank, storage);
       app.use(express.static(resolve('dist')));
@@ -155,7 +211,7 @@ export const test = base.extend<{
       if (!address || typeof address === 'string')
         throw new Error('Disposable master server unavailable');
       try {
-        await use({ origin: `http://127.0.0.1:${address.port}`, ids, cookie });
+        await use({ origin: `http://127.0.0.1:${address.port}`, ids, cookie, bank });
       } finally {
         await new Promise<void>((done) => server.close(() => done()));
       }

@@ -56,14 +56,13 @@ test('Public selections prepare server-validated questions and generate a PDF wi
   await page.getByRole('link', { name: 'Prepare question set' }).click();
   await expect(page.locator('.master-question')).toHaveCount(1);
   await expect(page.locator('.master-answer')).toHaveCount(0);
-  await page.getByRole('checkbox', { name: 'Include marking schemes' }).check();
-  await page.getByRole('checkbox', { name: 'Include student hints' }).check();
+  await page.getByLabel('Document', { exact: true }).selectOption('answer');
   await expect(
     page.getByRole('heading', { name: 'Question 1 · Answer scheme', exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('TEST ONLY hint one')).toBeVisible();
+  await expect(page.getByText('Student hint: TEST ONLY hint one', { exact: true })).toBeVisible();
   await expect(page.getByText('PRIVATE TEACHER NOTE')).toHaveCount(0);
-  const button = page.getByRole('button', { name: 'Print / Save as PDF', exact: true });
+  const button = page.getByRole('button', { name: 'Export', exact: true });
   await expect(button).toBeEnabled();
   const pdf = await page.pdf({
     path: test.info().outputPath('public-question-set.pdf'),
@@ -79,6 +78,7 @@ test('Public selections prepare server-validated questions and generate a PDF wi
     };
   });
   await button.click();
+  await expect(page.getByRole('status')).toHaveText('Print dialog opened. Choose Save as PDF.');
   expect(
     await page.evaluate(() => (window as unknown as { printRequested: boolean }).printRequested),
   ).toBe(true);
@@ -90,7 +90,7 @@ test('Public print route refuses hidden IDs and direct authoring paths require l
   await page.goto('/question-set?ids=TEST-HIDDEN-NONEXISTENT&answers=true&role=admin');
   await expect(page.getByRole('alert')).toHaveText('Question not found');
   await expect(page.locator('.print-question')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled();
   await page.goto('/edit/new?role=admin&teacher=true');
   await expect(page.getByRole('heading', { name: 'Admin login', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toHaveCount(0);

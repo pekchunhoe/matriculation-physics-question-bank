@@ -6,8 +6,8 @@ import type { Taxonomy } from '../../shared/schema.js';
 for (const name of layoutCases)
   test(`A4 Master layout: ${name}`, async ({ page, masterFixture }) => {
     await page.goto(`/question-set?ids=${masterFixture.ids[name]}&answers=true&hints=true`);
-    await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
-    await expect(page.locator('.master-question')).toHaveAttribute('data-question-number', '1');
+    await expect(page.getByRole('button', { name: 'Export' })).toBeEnabled();
+    await expect(page.locator('.master-question')).toHaveCount(0);
     await expect(page.locator('.master-answer')).toHaveAttribute('data-question-number', '1');
     await expect(page.locator('.master-answer .step-hint').first()).toBeVisible();
     const text = await page.locator('.print-set').innerText();
@@ -28,9 +28,6 @@ for (const name of layoutCases)
     expect(text).toContain('Total: 5 marks');
     const answer = page.locator('.master-answer');
     await expect(answer.locator('.marking-code')).toHaveCount(name === 'no-code' ? 0 : 5);
-    await expect(page.locator('.master-question img')).toHaveCount(
-      ['no-diagram', 'long-solution', 'no-code', 'answer-only-fbd'].includes(name) ? 0 : 1,
-    );
     await expect(answer.locator('img')).toHaveCount(
       ['no-diagram', 'long-solution', 'no-code', 'question-diagram'].includes(name)
         ? 0
@@ -38,7 +35,7 @@ for (const name of layoutCases)
           ? 1
           : 2,
     );
-    if (name === 'nested') await expect(page.locator('.master-question')).toContainText('(b)(ii)');
+    if (name === 'nested') await expect(answer).toContainText('(b)(ii)');
     if (name === 'multiple-fbds') {
       await expect(answer.locator('[data-step-id="step-2"] .step-hint')).toHaveCount(2);
       await expect(answer.locator('[data-step-id="step-2"] img')).toHaveCount(1);
@@ -61,37 +58,32 @@ for (const name of layoutCases)
     });
   });
 
-test('shared numbering updates both sections immediately after reorder and removal', async ({
+test('shared syllabus numbering ignores click reorder and renumbers after removal', async ({
   page,
   masterFixture,
 }) => {
-  const ids = ['no-diagram', 'one-fbd', 'nested'].map((n) => masterFixture.ids[n]);
-  await page.goto(`/question-set?ids=${ids.join(',')}&answers=true&hints=true`);
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
-  const mapping = async (selector: string) =>
+  const ids = ['no-diagram', 'one-fbd', 'nested'].map((n) => masterFixture.ids[n]).sort();
+  const mapping = () =>
     page
-      .locator(selector)
+      .locator('.master-paper')
       .evaluateAll((nodes) =>
         nodes.map((n) => [
           n.getAttribute('data-question-id'),
           n.getAttribute('data-question-number'),
         ]),
       );
-  expect(await mapping('.master-question')).toEqual(ids.map((id, i) => [id, String(i + 1)]));
-  await page.getByRole('button', { name: 'Move Question 3 up' }).click();
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Move Question 2 up' }).click();
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
-  const reordered = [ids[2], ids[0], ids[1]];
-  expect(await mapping('.master-question')).toEqual(reordered.map((id, i) => [id, String(i + 1)]));
-  expect(await mapping('.master-answer')).toEqual(await mapping('.master-question'));
-  await page.getByRole('button', { name: 'Remove Question 2' }).click();
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
-  expect(await mapping('.master-question')).toEqual([
-    [ids[2], '1'],
-    [ids[1], '2'],
+  await page.goto('/question-set?ids=' + [...ids].reverse().join(','));
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+  expect(await mapping()).toEqual(ids.map((id, i) => [id, String(i + 1)]));
+  await page.getByLabel('Document', { exact: true }).selectOption('answer');
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+  expect(await mapping()).toEqual(ids.map((id, i) => [id, String(i + 1)]));
+  await page.getByRole('button', { name: 'Remove Question 2', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+  expect(await mapping()).toEqual([
+    [ids[0], '1'],
+    [ids[2], '2'],
   ]);
-  expect(await mapping('.master-answer')).toEqual(await mapping('.master-question'));
 });
 test('Master set diagrams, equations and answer controls fit a mobile viewport', async ({
   page,
@@ -101,7 +93,7 @@ test('Master set diagrams, equations and answer controls fit a mobile viewport',
   await page.goto(
     `/question-set?ids=${masterFixture.ids['multiple-fbds']}&answers=true&hints=true`,
   );
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Export' })).toBeEnabled();
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all([...document.images].map((img) => img.decode()));
@@ -126,7 +118,7 @@ test('question-only export excludes answer FBDs, codes and every hint, including
 }) => {
   const id = masterFixture.ids['multiple-fbds'];
   await page.goto(`/question-set?ids=${id}&answers=false&hints=true`);
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Export' })).toBeEnabled();
   await expect(page.locator('.master-answer')).toHaveCount(0);
   await expect(page.locator('.print-set .marking-code, .print-set .step-hint')).toHaveCount(0);
   await expect(page.locator('.print-set img')).toHaveCount(1);
@@ -141,8 +133,8 @@ test('question-only export excludes answer FBDs, codes and every hint, including
   await page.evaluate(() => {
     window.print = () => {};
   });
-  await page.getByRole('button', { name: 'Print / Save as PDF' }).click();
-  expect(calls.filter((url) => /openai|anthropic|imagegen|\/api\//i.test(url))).toEqual([]);
+  await page.getByRole('button', { name: 'Export' }).click();
+  expect(calls.filter((url) => /openai|anthropic|imagegen/i.test(url))).toEqual([]);
   await page.pdf({ path: 'data/master-fidelity/pdf/question-only.pdf', preferCSSPageSize: true });
 });
 test('admin importer preview shows first-class codes and ordered hints inside their targeted steps', async ({

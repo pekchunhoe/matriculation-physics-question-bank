@@ -167,7 +167,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
       {select('Course', 'course', tax.courses)}
       <section className="panel" aria-label="Question selection">
         <h2>Question selection ({selection.length}/20)</h2>
-        <p>Select approved questions in the order you want to print them.</p>
+        <p>Select approved questions to export as PDF or Word. Exports follow syllabus order.</p>
         {selection.length > 0 && (
           <>
             <ol>

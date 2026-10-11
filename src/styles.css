@@ -878,9 +878,8 @@ footer {
 .master-paper {
   box-sizing: border-box;
   max-width: 210mm;
-  min-height: 297mm;
-  padding: 16mm 19mm 12mm;
-  margin: 0 auto 2rem;
+  padding: 4mm 8mm;
+  margin: 0 auto 1rem;
   background: white;
   color: #23313e;
   border: 1px solid #dce4eb;
@@ -965,7 +964,13 @@ footer {
   border-top: 1px solid #dce4eb;
   padding-top: 3mm;
   margin: 4mm 0;
+  break-inside: auto;
+}
+.master-step.compact-step {
   break-inside: avoid;
+}
+.master-step > .part-heading {
+  break-after: avoid;
 }
 .master-step h4 {
   font:
@@ -1055,12 +1060,12 @@ footer {
   font:
     600 11pt Arial,
     sans-serif;
-  margin-top: 6mm;
+  margin-top: 2mm;
   break-before: avoid;
 }
 .master-final-part,
 .master-final-answer {
-  break-inside: avoid;
+  break-inside: auto;
 }
 .master-footer {
   margin-top: 10mm;
@@ -1111,7 +1116,7 @@ footer {
     min-height: 0;
   }
   .print-question {
-    break-before: page;
+    break-before: auto;
   }
   .print-question:first-child {
     break-before: auto;
@@ -1143,7 +1148,7 @@ footer {
     border: 0;
     padding: 0;
     margin: 0;
-    break-before: page;
+    break-before: auto;
     print-color-adjust: exact;
   }
   .master-paper:first-child {
@@ -1173,7 +1178,53 @@ footer {
     display: none;
   }
   .master-paper h2 {
-    margin-top: 5mm;
+    margin-top: 0;
+  }
+}
+
+.export-options {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(220px, 2fr) auto;
+  gap: 1rem;
+  align-items: end;
+}
+.export-options .field {
+  margin-bottom: 0;
+}
+.export-options button {
+  min-height: 42px;
+}
+.export-document-title {
+  max-width: 210mm;
+  margin: 0 auto 1rem;
+  font-size: 1.4rem;
+}
+.master-paper .export-group {
+  font:
+    600 11pt/1.4 Arial,
+    sans-serif;
+  margin: 2mm 0;
+  break-after: avoid;
+}
+.visual-equation-pair.oversized-step {
+  break-inside: auto;
+}
+@media (max-width: 700px) {
+  .export-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .export-options button {
+    width: 100%;
+  }
+}
+@media print {
+  .master-paper {
+    margin-bottom: 4mm;
+  }
+  .export-document-title {
+    margin: 0 0 3mm;
+    font-size: 14pt;
+    break-after: avoid;
   }
 }
 .public-curriculum {

@@ -22,7 +22,7 @@ npm run build
 npm start
 ```
 
-The local server binds to loopback. Public users can browse current approved questions, marking schemes and hints, select questions, and use **Print / Save as PDF**. Teacher notes, source PDFs, drafts/reviewing/retired records, revision history and authoring operations require server-side admin authentication. Preview modes remain presentation controls. Use **Admin login** for authoring; there is no registration or default account.
+The local server binds to loopback. Public users can browse current approved questions, marking schemes and hints, select questions, and choose **PDF** or **Word (.docx)** plus **Question** or **Answer Scheme with Student's Hints** in the [public export workflow](docs/USER_PDF_WORD_EXPORT.md). All four combinations share syllabus ordering and consecutive numbering. Teacher notes, source PDFs, drafts/reviewing/retired records, revision history and authoring operations require server-side admin authentication. Preview modes remain presentation controls. Use **Admin login** for authoring; there is no registration or default account.
 
 ## Use
 
