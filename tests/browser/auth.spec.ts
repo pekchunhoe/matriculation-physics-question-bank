@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { createRequire } from 'node:module';
+import { installAxe } from './accessibility.js';
 import { testEmail, testPassword } from '../auth-fixture.js';
-const require = createRequire(import.meta.url);
 
 test('Public students browse approved questions, solutions, hints and curriculum without authoring controls or login', async ({
   page,
@@ -105,7 +104,7 @@ test('Login and public print options fit mobile and have no automated accessibil
     await page.goto(path);
     if (path === '/admin/login') await expect(page.getByLabel('Administrator email')).toBeVisible();
     else await expect(page.locator('.question-card')).toHaveCount(1);
-    await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+    await installAxe(page);
     const result = await page.evaluate(async () =>
       (window as unknown as { axe: { run: () => Promise<{ violations: unknown[] }> } }).axe.run(),
     );

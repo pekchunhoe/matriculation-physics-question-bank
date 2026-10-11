@@ -3,8 +3,7 @@ import { examplePackage, nestedPackage, splitPackage } from '../question-import-
 import type { QuestionPackage } from '../../shared/question-import.js';
 import type { Taxonomy } from '../../shared/schema.js';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+import { installAxe } from './accessibility.js';
 async function browserPackage(request: APIRequestContext, visual = false) {
   const tax = (await (await request.get('/api/taxonomy')).json()) as Taxonomy;
   const doc = examplePackage(visual),
@@ -264,7 +263,7 @@ for (const [width, height] of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.addScriptTag({ path: require.resolve('axe-core') });
+    await installAxe(page);
     const violations = await page.evaluate(
       async () =>
         (

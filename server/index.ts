@@ -12,8 +12,11 @@ const bank = await connectRuntimeBank().catch(() => {
   );
   process.exit(1);
 });
-const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')));
-if (process.env.NODE_ENV === 'production' || process.argv.includes('--production')) {
+const production = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
+const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')), {
+  development: !production,
+});
+if (production) {
   app.use(express.static(resolve('dist')));
   app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));
 } else {

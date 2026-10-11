@@ -522,7 +522,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                         className="text-link"
                         href={q.original_pdf}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                       >
                         Original PDF
                       </a>

@@ -18,11 +18,12 @@ import { QuestionJsonImportService } from './question-json-import.js';
 import { importLimits } from '../shared/question-import.js';
 import { z } from 'zod';
 import { VisibilityService } from './visibility.js';
+import { securityHeaders } from './security-headers.js';
 
 export function createApp(
   bank: Bank,
   storage: AssetStorage | undefined,
-  options: { hosted?: boolean } = {},
+  options: { hosted?: boolean; development?: boolean } = {},
 ) {
   const app = express();
   const assets = storage ? new AssetService(storage, bank) : undefined;
@@ -36,10 +37,20 @@ export function createApp(
   const questionImport = new QuestionJsonImportService(bank, storage);
   app.disable('x-powered-by');
   app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    for (const [key, value] of Object.entries(securityHeaders)) {
+      // Vite's loopback-only development HTML uses an inline HMR preamble.
+      // Hosted responses always enforce CSP, regardless of development options.
+      if (
+        key === 'Content-Security-Policy' &&
+        options.development &&
+        !auth.hosted &&
+        !req.path.startsWith('/api/') &&
+        !req.path.startsWith('/uploads/')
+      )
+        continue;
+      res.setHeader(key, value);
+    }
     res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'same-origin');
     if (auth.hosted) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     next();
   });

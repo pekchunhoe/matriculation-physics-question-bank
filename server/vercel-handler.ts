@@ -4,6 +4,7 @@ import { runtimeBank } from './runtime.js';
 import type { Bank } from './database.js';
 import type { AssetStorage } from './asset-storage.js';
 import { hostedAssetStorage } from './vercel-blob-storage.js';
+import { securityHeaders } from './security-headers.js';
 
 /** Exported Express handler for the same Vite deployment, without listen() or disk writes. */
 export function createApiHandler(
@@ -12,6 +13,8 @@ export function createApiHandler(
 ) {
   let app: ReturnType<typeof createApp> | undefined;
   return async (req: Request, res: Response) => {
+    for (const [key, value] of Object.entries(securityHeaders)) res.setHeader(key, value);
+    res.setHeader('Cache-Control', 'private, no-store');
     try {
       if (!app) {
         let storage: AssetStorage | undefined;

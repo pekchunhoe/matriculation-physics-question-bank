@@ -1,8 +1,7 @@
 import { test, expect } from './master-fidelity-fixture.js';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+import { installAxe } from './accessibility.js';
 const root = 'data/user-export/artifacts';
 
 test('a long hint starts on the available first page and continues naturally', async ({
@@ -299,7 +298,7 @@ for (const [width, height] of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.addScriptTag({ path: require.resolve('axe-core') });
+    await installAxe(page);
     expect(
       await page.evaluate(
         async () =>

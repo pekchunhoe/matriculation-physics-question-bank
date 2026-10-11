@@ -2,8 +2,7 @@ import { test, expect } from './question-import-browser-fixture.js';
 import { localPackage } from '../question-import-fixture.js';
 import { difficultyOptions } from '../../shared/question-import.js';
 import type { Page } from '@playwright/test';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+import { installAxe } from './accessibility.js';
 
 async function validate(page: Page, difficulty: string) {
   await page.getByLabel('Difficulty', { exact: true }).selectOption(difficulty);
@@ -202,7 +201,7 @@ for (const [width, height] of [
     await page.keyboard.press('Enter');
     await expect(page.getByText('DIFFICULTY: MEDIUM', { exact: true })).toBeVisible();
     await select.scrollIntoViewIfNeeded();
-    await page.addScriptTag({ path: require.resolve('axe-core') });
+    await installAxe(page);
     const violations = await page.evaluate(
       async () =>
         (

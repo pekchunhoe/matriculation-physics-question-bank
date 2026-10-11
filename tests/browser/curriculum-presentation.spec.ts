@@ -1,9 +1,8 @@
 import type { Page, Locator } from '@playwright/test';
-import { createRequire } from 'node:module';
+import { installAxe } from './accessibility.js';
 import type { CurriculumDocument } from '../../shared/curriculum.js';
 import { test, expect } from './curriculum-presentation-fixture.js';
 
-const require = createRequire(import.meta.url);
 const stored = <T extends { order: number }>(items: T[]) =>
   [...items].sort((a, b) => a.order - b.order);
 
@@ -13,7 +12,7 @@ async function noOverflow(page: Page) {
   );
 }
 async function accessible(page: Page) {
-  await page.addScriptTag({ path: require.resolve('axe-core/axe.min.js') });
+  await installAxe(page);
   const violations = await page.evaluate(async () => {
     const axe = (
       window as unknown as { axe: { run: () => Promise<{ violations: { id: string }[] }> } }

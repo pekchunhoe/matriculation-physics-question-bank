@@ -156,13 +156,18 @@ assert.equal(process.env.TURSO_AUTH_TOKEN, undefined);
 const { default: handler } = await import('./api/index.js');
 assert.equal(typeof handler, 'function');
 let status, body;
+const headers = new Map();
 const response = {
+  setHeader(key, value) { headers.set(key, value); return this; },
   status(value) { status = value; return this; },
   json(value) { body = value; return this; },
 };
 await handler({ url: '/api/health' }, response);
 assert.equal(status, 503);
 assert.deepEqual(body, { status: 'error', database: 'unavailable' });
+assert.equal(headers.get('Cache-Control'), 'private, no-store');
+assert.equal(headers.get('X-Content-Type-Options'), 'nosniff');
+assert.ok(headers.get('Content-Security-Policy').includes("frame-ancestors 'none'"));
 console.log('Native Node ESM API import and credential-free health response: PASS');
 `,
   );

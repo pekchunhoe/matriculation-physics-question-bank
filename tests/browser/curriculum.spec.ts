@@ -1,10 +1,9 @@
 import { test, expect } from './admin-fixture.js';
 import type { APIRequestContext } from '@playwright/test';
-import { createRequire } from 'node:module';
+import { installAxe } from './accessibility.js';
 import { readFileSync } from 'node:fs';
 import type { QuestionDocument, Taxonomy } from '../../shared/schema';
 import type { CurriculumDocument } from '../../shared/curriculum';
-const require = createRequire(import.meta.url);
 async function fixture(request: APIRequestContext, suffix: string) {
   async function add(kind: string, name: string, parentId: string | null) {
     const r = await request.post('/api/taxonomy/' + kind, {
@@ -197,7 +196,7 @@ test('curriculum editing controls and import preview fit mobile and pass automat
   await expect(page.getByLabel('Move to parent')).toBeDisabled();
   await page.getByText('Create or clone a draft version', { exact: true }).click();
   await page.getByText('Import an authoritative curriculum JSON', { exact: true }).click();
-  await page.addScriptTag({ path: require.resolve('axe-core') });
+  await installAxe(page);
   const violations = await page.evaluate(async () => {
     return (
       await (

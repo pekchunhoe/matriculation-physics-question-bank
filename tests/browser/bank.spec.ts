@@ -1,8 +1,7 @@
 import { test, expect } from './admin-fixture.js';
-import { createRequire } from 'node:module';
+import { installAxe } from './accessibility.js';
 import { readFileSync } from 'node:fs';
 import type { QuestionDocument } from '../../shared/schema';
-const require = createRequire(import.meta.url);
 test('semester, topic, difficulty and keyword filtering work together in the browser', async ({
   page,
 }) => {
@@ -119,7 +118,7 @@ for (const width of [1440, 768, 390])
       await expect(page.getByLabel('Difficulty', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Close filters' }).click();
     }
-    await page.addScriptTag({ path: require.resolve('axe-core') });
+    await installAxe(page);
     const violations = await page.evaluate(async () => {
       const result = await (
         window as unknown as {
@@ -277,7 +276,7 @@ test('editor, curriculum, import and student views have no automated accessibili
     }
     await expect(page.locator('h1')).toBeVisible();
     await expect(page.getByText('Loading…', { exact: true })).toHaveCount(0);
-    await page.addScriptTag({ path: require.resolve('axe-core') });
+    await installAxe(page);
     const violations = await page.evaluate(async () => {
       const result = await (
         window as unknown as {

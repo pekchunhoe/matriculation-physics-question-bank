@@ -15,7 +15,7 @@ export function Assets({ items }: { items: Asset[] }) {
         .sort((a, b) => a.order - b.order)
         .map((a) =>
           a.mime === 'application/pdf' ? (
-            <a className="button" key={a.id} href={a.url} target="_blank" rel="noreferrer">
+            <a className="button" key={a.id} href={a.url} target="_blank" rel="noopener noreferrer">
               {a.kind.replaceAll('_', ' ')} · {a.alt}
             </a>
           ) : (
