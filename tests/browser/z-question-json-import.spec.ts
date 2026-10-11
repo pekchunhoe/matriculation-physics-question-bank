@@ -10,6 +10,7 @@ async function browserPackage(request: APIRequestContext, visual = false) {
     topic = tax.topics.find((t) => t.name === 'TEST ONLY Momentum')!,
     chapter = tax.chapters.find((c) => c.id === topic.parentId)!,
     semester = tax.semesters.find((s) => s.id === chapter.parentId)!;
+  delete doc.difficulty;
   doc.classification = {
     curriculumVersionCode: tax.curriculumVersions!.find(
       (v) => v.id === semester.curriculumVersionId,
@@ -25,7 +26,8 @@ async function browserPackage(request: APIRequestContext, visual = false) {
 async function preview(page: Page, doc: QuestionPackage) {
   await page.goto('/import/question-json');
   await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
-  await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
+  if (await page.getByLabel('Difficulty', { exact: true }).isEnabled())
+    await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.getByRole('heading', { name: 'Validation results' })).toBeVisible();
 }
@@ -61,7 +63,8 @@ test('upload one JSON file uses the same preview and embedded assets need no sep
     buffer: Buffer.from(JSON.stringify(doc)),
   });
   await expect(page.getByLabel('Paste Question JSON')).toHaveValue(JSON.stringify(doc));
-  await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
+  if (await page.getByLabel('Difficulty', { exact: true }).isEnabled())
+    await page.getByLabel('Difficulty', { exact: true }).selectOption('Easy');
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(page.locator('.paper img')).toHaveCount(1);
   await expect(page.locator('.answer-scheme img')).toHaveCount(1);

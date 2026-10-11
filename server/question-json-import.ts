@@ -21,6 +21,11 @@ import {
 } from '../shared/question-import.js';
 import type { QuestionDocument, Taxon } from '../shared/schema.js';
 import type { AdminIdentity } from './auth.js';
+import {
+  checkImportStructure,
+  normalizeQuestionImport,
+  compatibilitySubmissionSchema,
+} from '../shared/import-compatibility.js';
 
 const hash = (value: unknown) =>
   createHash('sha256')
@@ -48,6 +53,7 @@ const planSchema = z
     taxonomyDigest: z.string(),
     selectedDifficulty: selectedDifficultySchema,
     expiresAt: z.number().int(),
+    allowDuplicate: z.boolean().default(false),
   })
   .strict();
 type Plan = z.infer<typeof planSchema>;
@@ -63,8 +69,28 @@ export class QuestionJsonImportService {
     this.assets = storage ? new AssetService(storage, bank) : undefined;
   }
   manifest(input: unknown) {
+    try {
+      checkImportStructure(input, importLimits.packageBytes);
+    } catch (error) {
+      throw new BankError((error as Error).message);
+    }
     if (Buffer.byteLength(JSON.stringify(input) ?? '') > importLimits.manifestBytes)
       throw new BankError('package: Structured manifest exceeds 384 KiB', 413);
+    const canonical = input && typeof input === 'object' && Object.hasOwn(input, 'schemaVersion');
+    if (!canonical) {
+      const result = normalizeQuestionImport(input, {}, true);
+      if (!result.valid)
+        throw new BankError(
+          result.diagnostics
+            .filter((d) => d.blocking)
+            .map(
+              (d) =>
+                `${d.sourcePath || 'package'} → ${d.destinationPath || 'review'}: ${d.message}`,
+            )
+            .join('\n'),
+        );
+      input = result.candidate;
+    }
     const parsed = importManifestSchema.safeParse(input);
     if (!parsed.success) throw new BankError(validationMessage(parsed.error));
     return parsed.data;
@@ -88,6 +114,22 @@ export class QuestionJsonImportService {
     const parsed = selectedDifficultySchema.safeParse(input);
     if (!parsed.success) throw new BankError('selectedDifficulty: Select Easy, Medium or Hard.');
     return parsed.data;
+  }
+  private preserveDifficulty(doc: ImportManifest, selection: SelectedDifficulty) {
+    if (doc.difficulty === undefined) return;
+    const recognized = ['Easy', 'Medium', 'Hard'].find(
+      (d) => d.toLowerCase() === doc.difficulty!.trim().toLowerCase(),
+    );
+    if (!recognized)
+      throw new BankError(
+        'difficulty: Source difficulty is ambiguous; explicitly confirm a canonical difficulty in the review.',
+      );
+    if (recognized !== selection)
+      throw new BankError(
+        'selectedDifficulty: Preserve the source difficulty (' +
+          recognized +
+          '); it cannot be silently changed.',
+      );
   }
   private async verify(
     token: unknown,
@@ -245,10 +287,47 @@ export class QuestionJsonImportService {
       })),
     });
   }
-  async validate(input: unknown, admin: AdminIdentity, selection: unknown): Promise<ImportPreview> {
+  private async duplicates(document: QuestionDocument) {
+    const fingerprint = this.fingerprint(document);
+    const candidates = await this.bank.all(
+      'SELECT id,title FROM questions WHERE title=? AND total_marks=?',
+      document.question.title,
+      document.question.totalMarks,
+    );
+    const matches: { id: string; title: string }[] = [];
+    for (const candidate of candidates)
+      if (this.fingerprint(await this.bank.document(String(candidate.id))) === fingerprint)
+        matches.push({ id: String(candidate.id), title: String(candidate.title) });
+    return matches;
+  }
+  async validate(
+    input: unknown,
+    admin: AdminIdentity,
+    selection: unknown,
+    allowDuplicate = false,
+    compatibility?: unknown,
+  ): Promise<ImportPreview> {
     const selectedDifficulty = this.selection(selection);
     const doc = this.manifest(input),
       id = randomUUID();
+    if (compatibility !== undefined) {
+      try {
+        const submitted = compatibilitySubmissionSchema.parse(compatibility);
+        const normalized = normalizeQuestionImport(submitted.source, submitted.review, true);
+        if (!normalized.valid)
+          throw new Error(
+            normalized.diagnostics
+              .filter((d) => d.blocking)
+              .map((d) => `${d.sourcePath} → ${d.destinationPath ?? 'review'}: ${d.message}`)
+              .join('\n'),
+          );
+        if (hash(importManifestSchema.parse(normalized.candidate)) !== hash(doc))
+          throw new Error('Normalized source differs from the submitted canonical manifest.');
+      } catch (error) {
+        throw new BankError('compatibility: ' + (error as Error).message);
+      }
+    }
+    this.preserveDifficulty(doc, selectedDifficulty);
     if (doc.assets.length && !this.assets)
       throw new AssetStorageError('Asset storage is not configured');
     const resolved = await this.resolve(doc, id, selectedDifficulty);
@@ -261,19 +340,12 @@ export class QuestionJsonImportService {
       if (a.byteLength > 2 * 1024 * 1024)
         warnings.push(`assets.${a.key}: Large visual; review label clarity and package size.`);
     }
-    const fingerprint = this.fingerprint(resolved.document);
-    const candidates = await this.bank.all(
-      'SELECT id FROM questions WHERE title=? AND total_marks=?',
-      doc.question.title,
-      doc.question.totalMarks,
-    );
-    for (const candidate of candidates)
-      if (this.fingerprint(await this.bank.document(String(candidate.id))) === fingerprint) {
-        warnings.push(
-          'Duplicate content fingerprint: an existing question contains identical structured content. Review before creating another draft.',
-        );
-        break;
-      }
+    const duplicates = await this.duplicates(resolved.document);
+    if (duplicates.length) {
+      warnings.push(
+        'Duplicate content fingerprint: an existing question contains identical structured content. Review before creating another draft.',
+      );
+    }
     const expiresAt = this.now() + importLimits.planLifetimeMs;
     const plan: Plan = {
       id,
@@ -282,6 +354,7 @@ export class QuestionJsonImportService {
       selectedDifficulty,
       taxonomyDigest: resolved.taxonomyDigest,
       expiresAt,
+      allowDuplicate,
     };
     const payload = Buffer.from(JSON.stringify(plan)).toString('base64url');
     const placement = (key: string) => {
@@ -304,6 +377,7 @@ export class QuestionJsonImportService {
       document: resolved.document,
       classification: resolved.classification,
       warnings,
+      duplicates,
       expiresAt,
       marks: {
         question: doc.question.totalMarks,
@@ -344,11 +418,17 @@ export class QuestionJsonImportService {
     const selectedDifficulty = this.selection(selection);
     const doc = this.manifest(input),
       plan = await this.verify(token, doc, admin, selectedDifficulty);
+    this.preserveDifficulty(doc, selectedDifficulty);
     const previous = await this.previous(plan, admin);
     if (previous) return previous;
     if (plan.expiresAt <= this.now())
       throw new BankError('token: Preview expired; validate and preview again', 409);
     let resolved = await this.resolve(doc, plan.id, plan.selectedDifficulty);
+    if (!plan.allowDuplicate && (await this.duplicates(resolved.document)).length)
+      throw new BankError(
+        'duplicate: Identical content already exists. Review the existing question or explicitly validate a separate draft.',
+        409,
+      );
     if (resolved.taxonomyDigest !== plan.taxonomyDigest)
       throw new BankError('classification: Curriculum changed; validate and preview again', 409);
     if (
@@ -397,6 +477,11 @@ export class QuestionJsonImportService {
         if (plan.expiresAt <= this.now())
           throw new BankError('token: Preview expired; validate and preview again', 409);
         resolved = await this.resolve(doc, plan.id, plan.selectedDifficulty);
+        if (!plan.allowDuplicate && (await this.duplicates(resolved.document)).length)
+          throw new BankError(
+            'duplicate: Identical content already exists. Validate again with explicit separate-draft approval.',
+            409,
+          );
         if (resolved.taxonomyDigest !== plan.taxonomyDigest)
           throw new BankError(
             'classification: Curriculum changed; validate and preview again',

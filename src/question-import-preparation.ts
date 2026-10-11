@@ -4,6 +4,11 @@
   validationMessage,
   type ImportManifest,
 } from '../shared/question-import';
+import {
+  normalizeQuestionImport,
+  parseImportSource,
+  type MappingReview,
+} from '../shared/import-compatibility';
 
 export type PreparedImport = {
   manifest: ImportManifest;
@@ -15,16 +20,19 @@ export function releaseImport(prepared: PreparedImport | null) {
   prepared?.urls.clear();
   prepared?.blobs.clear();
 }
-export async function prepareQuestionImport(source: string): Promise<PreparedImport> {
-  if (new TextEncoder().encode(source).length > importLimits.packageBytes)
-    throw new Error('package: Question JSON exceeds 5 MiB');
-  let input: unknown;
-  try {
-    input = JSON.parse(source);
-  } catch {
-    throw new Error('package: Invalid JSON; check commas, quotes and escaped LaTeX backslashes');
-  }
-  const parsed = questionPackageSchema.safeParse(input);
+export async function prepareQuestionImport(
+  source: string,
+  review: MappingReview = {},
+): Promise<PreparedImport> {
+  const analysis = normalizeQuestionImport(parseImportSource(source), review);
+  if (!analysis.valid)
+    throw new Error(
+      analysis.diagnostics
+        .filter((d) => d.blocking)
+        .map((d) => `${d.sourcePath || 'package'} → ${d.destinationPath || 'review'}: ${d.message}`)
+        .join('\n'),
+    );
+  const parsed = questionPackageSchema.safeParse(analysis.candidate);
   if (!parsed.success) throw new Error(validationMessage(parsed.error));
   const { assets, ...fields } = parsed.data;
   const manifest: ImportManifest = {

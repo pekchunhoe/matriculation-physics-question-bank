@@ -283,7 +283,12 @@ export function createApp(
   });
   app.post('/api/admin/questions/import/validate', async (req, res) => {
     const input = z
-      .object({ manifest: z.unknown(), selectedDifficulty: z.unknown().optional() })
+      .object({
+        manifest: z.unknown(),
+        selectedDifficulty: z.unknown().optional(),
+        allowDuplicate: z.boolean().optional(),
+        compatibility: z.unknown().optional(),
+      })
       .strict()
       .safeParse(req.body);
     if (!input.success)
@@ -293,6 +298,8 @@ export function createApp(
         input.data.manifest,
         identities.get(req)!,
         input.data.selectedDifficulty,
+        input.data.allowDuplicate,
+        input.data.compatibility,
       ),
     );
   });

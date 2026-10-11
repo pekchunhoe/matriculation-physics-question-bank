@@ -107,10 +107,18 @@ for (const [legacy, selected] of [
   ['MEDIUM', 'Medium'],
   ['Arbitrary legacy label', 'Easy'],
 ] as const)
-  test(`legacy JSON ${legacy} is accepted but admin ${selected} alone determines import`, async () => {
+  test(`source JSON ${legacy} is preserved or requires explicit ambiguity review; admin ${selected} cannot silently replace it`, async () => {
     const e = await environment();
     try {
       e.manifest.difficulty = legacy;
+      if (legacy.toLowerCase() !== selected.toLowerCase()) {
+        await assert.rejects(
+          e.service.validate(e.manifest, e.admin, selected),
+          /Preserve the source difficulty|ambiguous/,
+        );
+        assert.equal((await e.bank.list()).total, 0);
+        return;
+      }
       const p = await e.service.validate(e.manifest, e.admin, selected);
       const r = await e.service.commit(e.manifest, p.token, [], e.admin, selected);
       assert.equal(

@@ -1,12 +1,12 @@
 ﻿# Self-contained Question JSON import format (v1)
 
-Question difficulty is not inferred from marks or question content. The final Easy/Medium/Hard classification is selected manually by the administrator during JSON import.
+Question difficulty is not inferred from marks or question content. Recognized source Easy/Medium/Hard values (including harmless capitalization) are preserved and must match the administrator's signed selection.
 
-New Question JSON files do not need to provide difficulty. ChatGPT authors educational content and omits difficulty; the administrator chooses it using their own judgement. An optional legacy `difficulty` string (1–100 characters) remains accepted in schemaVersion 1 but is ignored, never preselects the dropdown and never overrides the administrator. No AI or heuristic assigns it.
+Question JSON files may omit difficulty; the administrator then explicitly chooses it. A supplied recognized `difficulty` is preselected and preserved. An ambiguous string requires explicit review/confirmation. No AI or heuristic assigns or changes it. See [flexible compatibility adapters](flexible-json-importer.md) for portable formats and manual mapping.
 
 Physics PDF → ChatGPT extracts question → ONE Question JSON → Admin website → Upload JSON → ADMIN SELECTS Easy / Medium / Hard → Validate & Preview → review → Import as Draft.
 
-The admin workflow at `/import/question-json` accepts **one question in one JSON file**, including its prepared image bytes. Paste JSON and Upload one `.json` file use the same pipeline. Select **Difficulty** manually (the initial value is **Select difficulty...**), then click **Validate & Preview**, inspect the rendered question, marking scheme, hints and visuals, acknowledge the review, then click **Import as Draft**. Publication remains a separate existing admin action. Neither preparation nor importing is performed by an AI service on this website. Normal importing uses zero AI calls or tokens.
+The admin workflow at `/import/question-json` accepts **one question in one JSON file**, including its prepared image bytes. Paste JSON and Upload one `.json` file use the same detection/normalization pipeline. Review format, diagnostics, preserved difficulty and curriculum; supply missing required values explicitly. Click **Validate & Preview**, inspect the rendered question, marking scheme, hints and visuals, acknowledge review, then click **Import as Draft**. Publication remains separate. Identical content needs explicit separate-draft approval and a new preview. No website AI calls or tokens are used.
 
 The canonical validator is `shared/question-import.ts`. The generated machine-readable schema is [question-json-import.schema.json](question-json-import.schema.json). Regenerate it with `npm run schema:generate`; `npm run schema:check` detects drift. JSON Schema describes field types and bounds; the runtime additionally checks LaTeX, references, hierarchy, marks, placements, exact taxonomy, signatures and hashes.
 
@@ -14,8 +14,8 @@ Complete ready-to-adapt examples:
 
 - [Golden Master reference](../examples/question-import/GOLDEN_QUESTION_IMPORT_REFERENCE.json): multipart question, LaTeX, a question diagram, two answer FBDs, five marking codes and six explicitly step-linked hints. Difficulty is omitted; the administrator selects Medium for its demonstration. Synthetic assets only.
 
-- [Dimensional analysis](../examples/question-import/dimensional-analysis.json): legacy compatibility fixture with ignored difficulty, authentic no-part shape, 2 marks, four hints, no images.
-- [Synthetic supported block](../examples/question-import/synthetic-visual.json): legacy compatibility fixture with ignored difficulty, two embedded PNGs, one question visual and one answer FBD. Images were drawn locally for testing and contain no extracted curriculum material.
+- [Dimensional analysis](../examples/question-import/dimensional-analysis.json): canonical fixture with preserved difficulty, no-part shape, 2 marks, four hints, no images.
+- [Synthetic supported block](../examples/question-import/synthetic-visual.json): canonical fixture with preserved difficulty, two embedded PNGs, one question visual and one answer FBD. Images were drawn locally for testing and contain no extracted curriculum material.
 
 These examples target the current curriculum by name. They are files/fixtures only; none has been imported into production. Isolated tests substitute their own existing test taxonomy.
 
@@ -264,7 +264,7 @@ Question-only mode excludes solutions, marking codes, ALL hints and answer-only 
 
 ## Administrator difficulty request contract
 
-The authenticated validation request is `{ "manifest": { ... }, "selectedDifficulty": "Medium" }`. `selectedDifficulty` is a separate required choice, not a portable-package property or database ID. Commit multipart contains `manifest`, `token`, `selectedDifficulty`, and each binary asset. Only Easy, Medium or Hard is accepted; missing/unknown values and missing/ambiguous canonical references fail before storage writes. The signed plan binds manifest, administrator selection and resolved taxonomy/difficulty state. Changing selection requires a new preview; mismatched commits and retries are rejected. Successful unchanged retries remain idempotent.
+The authenticated validation request is `{ "manifest": { ... }, "selectedDifficulty": "Medium" }`, optionally with boolean `allowDuplicate` and a bounded `compatibility: { source, review }` submission. The browser sends the reviewed source and mapping without embedded binary fields; the server independently normalizes, checks source coverage and compares canonical manifests before signing. Source/diagnostics are not persisted. `selectedDifficulty` is a separate required canonical choice and must preserve recognized source difficulty. Commit multipart remains `manifest`, `token`, `selectedDifficulty`, and each binary asset. The signed plan also binds duplicate permission; duplicates are rechecked inside the transaction. Successful unchanged retries remain idempotent.
 
 The preview displays the resolved canonical value as `DIFFICULTY: MEDIUM`. Canonical difficulty drives browsing, filters, normal admin versioned editing and Master PDF presentation. No extra database field or migration is required. Existing question data is unaffected. Validation is read-only and all imports remain private drafts under the existing admin/CSRF controls.
 

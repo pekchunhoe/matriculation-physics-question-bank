@@ -38,7 +38,7 @@ const packageFields = {
       subtopic: z.string().min(1).max(200).nullable(),
     })
     .strict(),
-  // Legacy authoring field; only the separate administrator selection is authoritative.
+  // Recognized source difficulty must match the administrator's signed selection.
   difficulty: z.string().min(1).max(100).optional(),
   question: z
     .object({
@@ -214,6 +214,7 @@ export type ImportPreview = {
   document: import('./schema.js').QuestionDocument;
   classification: import('./curriculum.js').Classification;
   warnings: string[];
+  duplicates: { id: string; title: string }[];
   marks: { question: number; parts: number; markingScheme: number };
   assets: {
     key: string;

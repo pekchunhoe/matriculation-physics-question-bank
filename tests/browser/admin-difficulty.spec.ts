@@ -5,7 +5,9 @@ import type { Page } from '@playwright/test';
 import { installAxe } from './accessibility.js';
 
 async function validate(page: Page, difficulty: string) {
-  await page.getByLabel('Difficulty', { exact: true }).selectOption(difficulty);
+  const selector = page.getByLabel('Difficulty', { exact: true });
+  if (await selector.isEnabled()) await selector.selectOption(difficulty);
+  else await expect(selector).toHaveValue(difficulty);
   await page.getByRole('button', { name: 'Validate & Preview' }).click();
   await expect(
     page.getByText(`DIFFICULTY: ${difficulty.toUpperCase()}`, { exact: true }),
@@ -75,7 +77,7 @@ test('no manual selection blocks preview without a validation request or databas
 });
 
 for (const method of ['paste', 'upload'] as const)
-  test(`legacy Medium loaded by ${method} never preselects; a new package also requires a fresh selection`, async ({
+  test(`source Medium loaded by ${method} is preserved; a package without difficulty requires a fresh selection`, async ({
     page,
     importFixture,
   }) => {
@@ -90,11 +92,14 @@ for (const method of ['paste', 'upload'] as const)
         buffer: Buffer.from(JSON.stringify(doc)),
       });
     await expect(page.getByLabel('Paste Question JSON')).toHaveValue(JSON.stringify(doc));
-    await expect(page.getByLabel('Difficulty', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('Difficulty', { exact: true })).toHaveValue('Medium');
+    await expect(page.getByLabel('Difficulty', { exact: true })).toBeDisabled();
     await expect(
-      page.getByText('Difficulty contained in the JSON is not used. Select difficulty manually.'),
+      page.getByText(
+        'Source difficulty preserved: Medium. Correct the source only if the source itself is wrong.',
+      ),
     ).toBeVisible();
-    await validate(page, 'Hard');
+    await validate(page, 'Medium');
     delete doc.difficulty;
     doc.question.title += ' new package';
     await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
@@ -124,18 +129,24 @@ for (const [legacy, difficulty] of [
   ['Hard', 'Easy'],
   ['Easy', 'Hard'],
 ] as const)
-  test(`legacy ${legacy} cannot override admin ${difficulty} in browser preview or canonical import`, async ({
+  test(`source ${legacy} is preserved and a direct API attempt to replace it with ${difficulty} is blocked`, async ({
     page,
+    request,
     importFixture,
   }) => {
     const doc = await localPackage(importFixture.bank);
     doc.difficulty = legacy;
     await page.goto('/import/question-json');
     await page.getByLabel('Paste Question JSON').fill(JSON.stringify(doc));
-    await validate(page, difficulty);
+    await expect(page.getByLabel('Difficulty', { exact: true })).toBeDisabled();
+    const response = await request.post('/api/admin/questions/import/validate', {
+      data: { manifest: doc, selectedDifficulty: difficulty },
+    });
+    expect(response.status()).toBe(400);
+    await validate(page, legacy);
     const id = await commit(page);
     expect((await importFixture.bank.document(id)).question.difficultyId).toBe(
-      difficulty.toLowerCase(),
+      legacy.toLowerCase(),
     );
   });
 

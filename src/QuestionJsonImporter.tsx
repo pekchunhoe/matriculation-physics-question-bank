@@ -3,6 +3,14 @@ import { api, json } from './api';
 import { ContentPreview } from './Preview';
 import { Field, QuestionMetadata } from './components';
 import { MathText } from './MathText';
+import { ImportCompatibilityReview } from './ImportCompatibilityReview';
+import {
+  normalizeQuestionImport,
+  parseImportSource,
+  type CompatibilityResult,
+  type MappingReview,
+  compatibilitySubmission,
+} from '../shared/import-compatibility';
 import type { Taxonomy } from '../shared/schema';
 import {
   difficultyOptions,
@@ -26,12 +34,19 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
     [reviewed, setReviewed] = useState(false),
     [saved, setSaved] = useState<{ id: string } | null>(null),
     [dimensions, setDimensions] = useState<Record<string, string>>({});
+  const [analysis, setAnalysis] = useState<CompatibilityResult | null>(null),
+    [mappingReview, setMappingReview] = useState<MappingReview>({}),
+    [candidateText, setCandidateText] = useState(''),
+    [candidateDirty, setCandidateDirty] = useState(false),
+    [allowDuplicate, setAllowDuplicate] = useState(false),
+    [duplicateReview, setDuplicateReview] = useState<ImportPreview['duplicates']>([]),
+    [sourceDifficulty, setSourceDifficulty] = useState<SelectedDifficulty | undefined>();
   const fileInput = useRef<HTMLInputElement | null>(null);
   const prepared = useRef<PreparedImport | null>(null),
     revision = useRef(0),
     locked = useRef(false);
   useEffect(() => () => releaseImport(prepared.current), []);
-  const reset = () => {
+  const reset = (preserveDuplicates = false) => {
     revision.current++;
     releaseImport(prepared.current);
     prepared.current = null;
@@ -41,19 +56,50 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
     setDimensions({});
     setError('');
     setDifficultyError('');
+    if (!preserveDuplicates) setDuplicateReview([]);
   };
-  let legacyDifficulty = false;
-  try {
-    const parsed: unknown = JSON.parse(source);
-    legacyDifficulty = Boolean(
-      parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'difficulty'),
-    );
-  } catch {
-    /* The package validator reports JSON errors. */
+  function updateSource(text: string) {
+    reset();
+    setSource(text);
+    setMappingReview({});
+    setAllowDuplicate(false);
+    setSelectedDifficulty('');
+    setSourceDifficulty(undefined);
+    setCandidateDirty(false);
+    try {
+      const result = normalizeQuestionImport(parseImportSource(text));
+      setAnalysis(result);
+      setCandidateText(JSON.stringify(result.candidate, null, 2));
+      if (result.difficulty) {
+        setSelectedDifficulty(result.difficulty);
+        setSourceDifficulty(result.difficulty);
+      }
+    } catch {
+      setAnalysis(null);
+      setCandidateText('');
+    }
+  }
+  function review(next: MappingReview) {
+    reset();
+    setAllowDuplicate(false);
+    try {
+      const result = normalizeQuestionImport(parseImportSource(source), next);
+      setMappingReview(next);
+      setCandidateDirty(false);
+      setAnalysis(result);
+      setCandidateText(JSON.stringify(result.candidate, null, 2));
+      if (result.difficulty) setSelectedDifficulty(result.difficulty);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
   async function validate() {
     if (locked.current) return;
     reset();
+    if (candidateDirty) {
+      setError('Apply corrections and recheck the edited Master JSON before validating.');
+      return;
+    }
     if (!selectedDifficulty) {
       setDifficultyError('Select a difficulty before validating this question.');
       return;
@@ -63,10 +109,19 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
     const generation = revision.current;
     let next: PreparedImport | null = null;
     try {
-      next = await prepareQuestionImport(source);
+      const approvedReview = { ...mappingReview, confirmedDifficulty: selectedDifficulty };
+      const result = normalizeQuestionImport(parseImportSource(source), approvedReview);
+      setAnalysis(result);
+      setCandidateText(JSON.stringify(result.candidate, null, 2));
+      next = await prepareQuestionImport(source, approvedReview);
       const response = await api<ImportPreview>(
         '/admin/questions/import/validate',
-        json('POST', { manifest: next.manifest, selectedDifficulty }),
+        json('POST', {
+          manifest: next.manifest,
+          selectedDifficulty,
+          allowDuplicate,
+          compatibility: compatibilitySubmission(parseImportSource(source), approvedReview),
+        }),
       );
       if (generation !== revision.current) {
         releaseImport(next);
@@ -78,6 +133,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
         url: next!.urls.get(a.id)!,
       }));
       setPreview(response);
+      setDuplicateReview(response.duplicates);
     } catch (e) {
       releaseImport(next);
       if (generation === revision.current) {
@@ -113,6 +169,12 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
       });
       setSaved(result);
       setSource('');
+      setAnalysis(null);
+      setMappingReview({});
+      setCandidateText('');
+      setAllowDuplicate(false);
+      setDuplicateReview([]);
+      setSourceDifficulty(undefined);
       setSelectedDifficulty('');
       if (fileInput.current) fileInput.current.value = '';
       setPreview(null);
@@ -139,9 +201,13 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
         </div>
       </div>
       {error && (
-        <pre id="import-errors" role="alert" className="error import-errors">
-          ERROR — {error}
-        </pre>
+        <div id="import-errors" role="alert" className="error import-errors">
+          <p>{error.split('\n')[0]}</p>
+          <details>
+            <summary>Technical validation details</summary>
+            <pre>{error}</pre>
+          </details>
+        </div>
       )}
       {saved && (
         <p className="notice" role="status">
@@ -175,7 +241,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
               void file
                 .text()
                 .then((text) => {
-                  if (generation === revision.current) setSource(text);
+                  if (generation === revision.current) updateSource(text);
                 })
                 .catch(() => setError('package: Unable to read file'));
             }}
@@ -192,9 +258,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
             aria-invalid={Boolean(error)}
             aria-describedby={error ? 'import-errors import-limits' : 'import-limits'}
             onChange={(e) => {
-              reset();
-              setSelectedDifficulty('');
-              setSource(e.target.value);
+              updateSource(e.target.value);
             }}
           />
         </Field>
@@ -202,7 +266,7 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
           <select
             required
             value={selectedDifficulty}
-            disabled={busy}
+            disabled={busy || Boolean(sourceDifficulty)}
             aria-invalid={Boolean(difficultyError)}
             aria-describedby={
               difficultyError ? 'difficulty-error difficulty-help' : 'difficulty-help'
@@ -221,12 +285,13 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
           </select>
         </Field>
         <p className="muted" id="difficulty-help">
-          Choose difficulty using your own judgement. Marks and question content do not determine
-          it.
+          Recognized source difficulty is preserved. If it is absent or ambiguous, select and
+          confirm it explicitly; marks and content do not determine it.
         </p>
-        {legacyDifficulty && (
+        {sourceDifficulty && (
           <p className="notice">
-            Difficulty contained in the JSON is not used. Select difficulty manually.
+            Source difficulty preserved: {sourceDifficulty}. Correct the source only if the source
+            itself is wrong.
           </p>
         )}
         {difficultyError && (
@@ -235,8 +300,9 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
           </p>
         )}
         <p className="muted" id="import-limits">
-          Package ≤ 5 MiB. Up to 8 visuals, combined ≤ 3 MiB. Use schemaVersion 1 and kind
-          matriculation-physics-question. No API token is needed.
+          Package ≤ 5 MiB. Up to 8 supplied visuals, combined ≤ 3 MiB. Master JSON, supported
+          portable JSON and reviewed field mappings normalize to Master schema v1. No API token is
+          needed.
         </p>
         <button
           className="button primary"
@@ -249,6 +315,50 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
           <a href="/import">Import existing structured exports / revisions</a>
         </p>
       </section>
+      {analysis && (
+        <ImportCompatibilityReview
+          analysis={analysis}
+          source={source}
+          review={mappingReview}
+          candidateText={candidateText}
+          busy={busy}
+          tax={tax}
+          onCandidateText={(text) => {
+            reset();
+            setCandidateText(text);
+            setCandidateDirty(true);
+          }}
+          onReview={review}
+        />
+      )}
+      {allowDuplicate && (
+        <p className="notice" role="status">
+          Separate duplicate draft explicitly selected. Validate again to sign this choice.
+        </p>
+      )}
+      {!!duplicateReview.length && (
+        <section className="panel">
+          <h3>Existing identical questions</h3>
+          {duplicateReview.map((d) => (
+            <p key={d.id}>
+              <a href={'/questions/' + d.id}>{d.title}</a>
+            </p>
+          ))}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={allowDuplicate}
+              disabled={busy}
+              onChange={(e) => {
+                reset(true);
+                setAllowDuplicate(e.target.checked);
+              }}
+            />
+            I intentionally want a separate draft of this identical content. Validate again after
+            selecting.
+          </label>
+        </section>
+      )}
       {preview && (
         <>
           <section className="panel">
@@ -339,7 +449,9 @@ export function QuestionJsonImporter({ tax }: { tax: Taxonomy }) {
             </label>
             <button
               className="button primary"
-              disabled={busy || !reviewed}
+              disabled={
+                busy || !reviewed || (Boolean(preview.duplicates.length) && !allowDuplicate)
+              }
               onClick={() => void commit()}
             >
               Import as Draft

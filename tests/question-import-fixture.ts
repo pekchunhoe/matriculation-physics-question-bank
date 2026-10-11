@@ -16,6 +16,8 @@ export function examplePackage(visual = false): QuestionPackage {
 export async function localPackage(bank: Bank, visual = false) {
   const doc = examplePackage(visual),
     tax = await bank.taxonomy();
+  // Local tests exercise explicit administrator selection unless testing source difficulty.
+  delete doc.difficulty;
   const topic = tax.topics.find((t) => t.name === 'TEST ONLY Momentum')!;
   const chapter = tax.chapters.find((c) => c.id === topic.parentId)!;
   const semester = tax.semesters.find((s) => s.id === chapter.parentId)!;
