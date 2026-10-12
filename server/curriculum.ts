@@ -12,7 +12,7 @@ import {
   type CurriculumVersion,
   type EditableKind,
 } from '../shared/curriculum.js';
-import type { QuestionDocument, Taxon, Taxonomy } from '../shared/schema.js';
+import type { Taxon, Taxonomy } from '../shared/schema.js';
 
 export const editableKinds = ['semesters', 'chapters', 'topics', 'subtopics'] as const;
 const parents = {
@@ -49,7 +49,7 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
-/** Adds curriculum administration to the existing Bank; question documents stay schema v1. */
+/** Preserved curriculum administration, including legacy and image-record references. */
 export class CurriculumService {
   constructor(private bank: Bank) {}
   async versions(): Promise<CurriculumVersion[]> {
@@ -74,6 +74,12 @@ export class CurriculumService {
       taxonomy: await this.bank.taxonomy(),
       questions: await this.bank.all(
         'SELECT id,active_version,topic_id,subtopic_id FROM questions ORDER BY id',
+      ),
+      images: await this.bank.all(
+        'SELECT id,revision,topic_id,subtopic_id FROM image_questions ORDER BY id',
+      ),
+      imageHistory: await this.bank.all(
+        'SELECT question_id,revision,classification FROM image_question_versions ORDER BY question_id,revision',
       ),
       history: await this.bank.all(
         'SELECT question_id,version_number FROM question_version_classifications ORDER BY question_id,version_number',
@@ -121,7 +127,7 @@ export class CurriculumService {
       );
   }
   async classification(
-    doc: QuestionDocument,
+    doc: { question: { topicId: string; subtopicId: string | null } },
     provenance: Classification['provenance'] = 'captured',
   ): Promise<Classification> {
     const row = await this.bank.one(
@@ -157,18 +163,30 @@ export class CurriculumService {
         : tax[kind].find((t) => t.id === id);
     if (!record) throw new BankError('Curriculum record not found', 404);
     const versionId = kind === 'curriculumVersions' ? id : await this.versionOf(kind, id);
-    const relevant = async (d: QuestionDocument) => {
+    const relevant = async (d: { question: { topicId: string; subtopicId: string | null } }) => {
       const path = await this.classification(d);
       return kind === 'curriculumVersions'
         ? path.curriculumVersion.id === id
         : path[kind.slice(0, -1) as 'semester' | 'chapter' | 'topic' | 'subtopic']?.id === id;
     };
     let currentQuestions = 0;
-    for (const q of await this.bank.all('SELECT id,active_version FROM questions'))
-      if (await relevant(await this.bank.document(String(q.id)))) currentQuestions++;
+    for (const q of await this.bank.all(
+      'SELECT id,topic_id,subtopic_id FROM questions WHERE id NOT IN (SELECT id FROM image_questions) UNION ALL SELECT id,topic_id,subtopic_id FROM image_questions',
+    ))
+      if (
+        await relevant({
+          question: {
+            topicId: String(q.topic_id),
+            subtopicId: q.subtopic_id ? String(q.subtopic_id) : null,
+          },
+        })
+      )
+        currentQuestions++;
     const key = kind === 'curriculumVersions' ? 'curriculumVersion' : kind.slice(0, -1);
     const history = (
-      await this.bank.all('SELECT question_id,snapshot FROM question_version_classifications')
+      await this.bank.all(
+        'SELECT question_id,snapshot FROM question_version_classifications UNION ALL SELECT question_id,classification AS snapshot FROM image_question_versions',
+      )
     ).filter((r) => JSON.parse(String(r.snapshot))[key]?.id === id);
     let pendingRevisions = 0;
     for (const r of await this.bank.all(
@@ -208,8 +226,12 @@ export class CurriculumService {
             previousActive: {
               id: previous.id,
               name: previous.name,
-              currentQuestions: (await this.bank.list({ curriculum: previous.id, limit: '1' }))
-                .total,
+              currentQuestions: Number(
+                (await this.bank.one(
+                  'SELECT COUNT(*) n FROM (SELECT id,topic_id FROM questions WHERE id NOT IN (SELECT id FROM image_questions) UNION ALL SELECT id,topic_id FROM image_questions) q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id WHERE s.curriculum_version_id=?',
+                  previous.id,
+                ))!.n,
+              ),
             },
           }
         : {}),
@@ -275,6 +297,8 @@ export class CurriculumService {
         status: edit.status ?? before.status,
         parentId: edit.parentId ?? before.parentId,
       };
+      if (kind === 'semesters' && !['Semester 1', 'Semester 2'].includes(next.name))
+        throw new BankError('Use the permanent semester names Semester 1 or Semester 2');
       if (next.parentId !== before.parentId) {
         if (kind === 'semesters')
           throw new BankError(
@@ -335,7 +359,6 @@ export class CurriculumService {
         edit.note,
         edit.author ?? null,
       );
-      await this.bank.refreshSearch();
       return { id, impact };
     });
   }
@@ -553,6 +576,8 @@ export class CurriculumService {
       for (const item of items) {
         item.id = takeId(item.id);
         item.name = item.name.trim().replace(/\s+/g, ' ');
+        if (kind === 'semesters' && !['Semester 1', 'Semester 2'].includes(item.name))
+          throw new BankError('Use the permanent semester names Semester 1 or Semester 2');
         item.slug ??= (
           (kind === 'semesters' ? slug(doc.curriculumVersion.code) + '-' : '') + slug(item.name)
         ).slice(0, 200);

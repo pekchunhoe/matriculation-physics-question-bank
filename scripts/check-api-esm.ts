@@ -192,11 +192,11 @@ console.log('Native Node ESM API import and credential-free health response: PAS
 
   // Prove that this check reproduces the reported deployment failure. Modify
   // only temporary emitted output; production source and data remain untouched.
-  const schema = join(output, 'shared/schema.js');
+  const schema = join(output, 'server/image-questions.js');
   const original = readFileSync(schema, 'utf8');
-  assert.ok(original.includes("from './model.js'"));
+  assert.ok(original.includes("from './asset-validation.js'"));
   try {
-    writeFileSync(schema, original.replace("from './model.js'", "from './model'"));
+    writeFileSync(schema, original.replace("from './asset-validation.js'", "from './asset-validation'"));
     const broken = launch();
     assert.equal(broken.error, undefined);
     assert.notEqual(broken.status, 0);

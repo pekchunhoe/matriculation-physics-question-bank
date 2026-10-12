@@ -6,6 +6,108 @@ import { createApp } from '../server/app.js';
 import { createApiHandler } from '../server/vercel-handler.js';
 import { createTestBank } from './test-bank.js';
 import { seedAdminSession, authenticatedFetch } from './auth-fixture.js';
+import { assertPreviewIsolation, previewIsolation } from '../server/preview-isolation.js';
+
+function isolatedPreviewEnv(): NodeJS.ProcessEnv {
+  const claims = {
+    id: previewIsolation.databaseId,
+    a: 'rw',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  return {
+    VERCEL: '1',
+    VERCEL_ENV: 'preview',
+    VERCEL_GIT_COMMIT_REF: previewIsolation.branch,
+    TURSO_DATABASE_URL: 'libsql://' + previewIsolation.databaseHostname,
+    TURSO_AUTH_TOKEN: 'test.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.test',
+    BLOB_STORE_ID: previewIsolation.blobStoreId,
+  };
+}
+
+test('Preview guard rejects resource drift, broader credentials and fallback configuration', () => {
+  const valid = isolatedPreviewEnv();
+  assert.doesNotThrow(() => assertPreviewIsolation(valid));
+  const token = (claims: object) =>
+    'test.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.test';
+  const claims = { id: previewIsolation.databaseId, a: 'rw', exp: Date.now() / 1000 + 3600 };
+  const invalid = [
+    { TURSO_DATABASE_URL: undefined },
+    { TURSO_DATABASE_URL: 'libsql://production.example.invalid' },
+    { TURSO_DATABASE_URL: valid.TURSO_DATABASE_URL + '/other' },
+    { TURSO_DATABASE_URL: valid.TURSO_DATABASE_URL + '?token=TEST_ONLY' },
+    { TURSO_AUTH_TOKEN: undefined },
+    { TURSO_AUTH_TOKEN: 'TEST_ONLY_MALFORMED_TOKEN' },
+    { TURSO_AUTH_TOKEN: token({ ...claims, id: 'production' }) },
+    { TURSO_AUTH_TOKEN: token({ ...claims, attach: ['production'] }) },
+    { TURSO_AUTH_TOKEN: token({ ...claims, exp: 1 }) },
+    { TURSO_AUTH_TOKEN: token({ ...claims, a: 'ro' }) },
+    { BLOB_STORE_ID: 'store_production' },
+    { BLOB_STORE_ID: undefined },
+    { BLOB_READ_WRITE_TOKEN: 'TEST_ONLY_FALLBACK' },
+    { VERCEL_GIT_COMMIT_REF: 'master' },
+    { VERCEL_GIT_COMMIT_REF: undefined },
+    { VERCEL_ENV: undefined },
+    { VERCEL_ENV: 'unrecognized' },
+  ];
+  for (const override of invalid)
+    assert.throws(
+      () => assertPreviewIsolation({ ...valid, ...override }),
+      /^Error: Preview isolation configuration rejected$/,
+    );
+  assert.doesNotThrow(() => assertPreviewIsolation({ VERCEL_ENV: 'production' }));
+  assert.doesNotThrow(() => assertPreviewIsolation({}));
+});
+
+test('Invalid Preview configuration blocks health, authentication and uploads before any resource initialization', async () => {
+  let touched = 0;
+  const handler = createApiHandler(
+    async () => {
+      touched++;
+      throw new Error('Must not connect');
+    },
+    () => {
+      touched++;
+      return undefined;
+    },
+    { ...isolatedPreviewEnv(), BLOB_STORE_ID: 'store_production' },
+  );
+  await withHandler(handler, async (base) => {
+    for (const [method, path] of [
+      ['GET', '/api/health'],
+      ['POST', '/api/auth/login'],
+      ['POST', '/api/uploads'],
+      ['GET', '/api/preview-isolation'],
+    ]) {
+      const response = await fetch(base + path, { method });
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        error: 'Preview isolation configuration rejected',
+      });
+    }
+  });
+  assert.equal(touched, 0);
+});
+
+test('Preview diagnostics are unavailable in Production and reject mutation methods before initialization', async () => {
+  let touched = 0;
+  const load = async () => {
+    touched++;
+    throw new Error('Must not connect');
+  };
+  await withHandler(
+    createApiHandler(load, () => undefined, { VERCEL_ENV: 'production' }),
+    async (base) => {
+      assert.equal((await fetch(base + '/api/preview-isolation')).status, 404);
+    },
+  );
+  await withHandler(
+    createApiHandler(load, () => undefined, isolatedPreviewEnv()),
+    async (base) => {
+      assert.equal((await fetch(base + '/api/preview-isolation', { method: 'POST' })).status, 405);
+    },
+  );
+  assert.equal(touched, 0);
+});
 
 async function withHandler(handler: RequestHandler, fn: (base: string) => Promise<void>) {
   const app = express();
@@ -56,7 +158,7 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
       assert.equal((await fetch(base + '/uploads/test.pdf')).status, 503);
       assert.equal((await fetch(base + '/api/questions')).status, 200);
       assert.equal((await fetch(base + '/api/taxonomy')).status, 200);
-      assert.equal((await bank.list()).total, 0);
+      assert.equal(Number((await bank.one('SELECT COUNT(*) n FROM image_questions'))!.n), 0);
       assert.equal((await bank.taxonomy()).chapters.length, 0);
     });
   } finally {

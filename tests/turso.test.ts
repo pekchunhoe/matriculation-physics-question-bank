@@ -7,7 +7,34 @@ import type { Client, Config, ResultSet, Transaction, InStatement } from '@libsq
 import { Bank } from '../server/database.js';
 import { TursoAdapter, tursoConfig } from '../server/turso-adapter.js';
 import { applyMigrations, assertCurrentSchema } from '../server/migrations.js';
-import { setup, seedTests } from './fixtures.js';
+import { imageEnvironment } from './image-fixture.js';
+
+test('Image pair and immutable history persist through the real libSQL SDK transaction adapter', async () => {
+  const e = await imageEnvironment(await isolatedBank());
+  try {
+    const q = (await e.create()).question;
+    await e.service.status(
+      q.id,
+      { status: 'approved', expectedRevision: 1, confirmed: true },
+      e.actor,
+    );
+    const saved = (
+      await e.service.save(
+        q.id,
+        { ...e.fixture(), expectedRevision: 2, confirmPublishedReplacement: true, totalMarks: 9 },
+        {},
+        e.actor,
+      )
+    ).question;
+    assert.equal(saved.id, q.id);
+    assert.equal(saved.revision, 3);
+    assert.equal((await e.service.questionSet(q.id)).items[0].totalMarks, 9);
+    assert.equal((await e.bank.all('SELECT * FROM image_question_versions')).length, 3);
+    assert.deepEqual(await e.bank.all('PRAGMA foreign_key_check'), []);
+  } finally {
+    await e.close();
+  }
+});
 
 // Every SDK integration client below is file::memory: or a mock. No test reads
 // process.env, invokes the Turso CLI, or connects to the production database.
@@ -238,151 +265,6 @@ test('Migration safety gate runs under the write transaction and blocks unexpect
       undefined,
     );
     assert.deepEqual(await bank.all('SELECT * FROM tags'), []);
-  } finally {
-    await bank.close();
-  }
-});
-
-test('libSQL filtering preserves semester, topic, difficulty, combined filters and FTS MATCH', async () => {
-  const bank = await isolatedBank();
-  try {
-    const { momentum, circular } = await seedTests(bank);
-    assert.equal((await bank.list({ semester: 'semester-1' })).total, 4);
-    assert.equal((await bank.list({ semester: 'semester-2' })).total, 3);
-    assert.equal((await bank.list({ topic: momentum })).total, 3);
-    assert.equal((await bank.list({ difficulty: 'easy' })).total, 2);
-    assert.equal(
-      (
-        await bank.list({
-          semester: 'semester-1',
-          topic: momentum,
-          difficulty: 'hard',
-          q: 'collision',
-        })
-      ).total,
-      1,
-    );
-    assert.equal(
-      (await bank.list({ semester: 'semester-2', topic: circular, difficulty: 'medium' })).total,
-      1,
-    );
-    assert.equal((await bank.list({ semester: 'semester-2', topic: momentum })).total, 0);
-    assert.equal(
-      (
-        await bank.all(
-          'SELECT question_id FROM question_search WHERE question_search MATCH ?',
-          '"collision"',
-        )
-      ).length,
-      7,
-    );
-  } finally {
-    await bank.close();
-  }
-});
-
-test('libSQL draft edits preserve versions and replace/delete FTS entries without duplicates', async () => {
-  const bank = await isolatedBank();
-  try {
-    const { fixture } = await setup(bank);
-    const doc = fixture('TEST-ASYNC-EDIT');
-    doc.question.status = 'draft';
-    const q = await bank.create(doc, 'Initial');
-    assert.equal((await bank.list({ q: 'ASYNC' })).total, 1);
-    doc.question.title = 'TEST_ONLY replacementneedle';
-    doc.question.scenario = 'TEST_ONLY new wording';
-    await bank.save(q.id, doc, 'Edit', 1);
-    assert.equal((await bank.list({ q: 'replacementneedle' })).total, 1);
-    assert.equal((await bank.versions(q.id)).length, 2);
-    assert.notEqual((await bank.document(q.id, 1)).question.title, doc.question.title);
-    await bank.refreshSearch();
-    await bank.refreshSearch();
-    assert.equal((await bank.all('SELECT * FROM question_search')).length, 1);
-    await bank.transaction(async () => {
-      await bank.run('DELETE FROM question_search WHERE question_id=?', q.id);
-      assert.equal((await bank.list({ q: 'replacementneedle' })).total, 0);
-    });
-    await bank.refreshSearch();
-    assert.equal((await bank.list({ q: 'replacementneedle' })).total, 1);
-    await assert.rejects(
-      bank.run('UPDATE question_versions SET snapshot=snapshot WHERE question_id=?', q.id),
-      /immutable/,
-    );
-  } finally {
-    await bank.close();
-  }
-});
-
-test('libSQL JSON/provenance imports and curriculum versions keep historical classifications', async () => {
-  const bank = await isolatedBank();
-  try {
-    const { fixture } = await setup(bank);
-    const q = await bank.create(fixture('TEST-SDK-JSON'), 'Initial', null, true);
-    const exported = {
-      schemaVersion: 2,
-      document: await bank.document(q.id),
-      savedClassification: await bank.savedClassification(q.id),
-    };
-    assert.deepEqual(await bank.resolveImport(exported), exported.document);
-    exported.document.question.questionCode = 'TEST-SDK-JSON-COPY';
-    const copied = await bank.create(
-      await bank.resolveImport(exported),
-      'Copy',
-      null,
-      true,
-      exported.savedClassification,
-    );
-    assert.deepEqual(await bank.savedClassification(copied.id), exported.savedClassification);
-    const cloned = await bank.curriculum.createVersion(
-      {
-        courseId: 'matriculation-physics',
-        code: 'TEST-SDK-CLONE',
-        name: 'TEST ONLY clone',
-        status: 'draft',
-        order: 1,
-        effectiveFrom: null,
-        effectiveTo: null,
-        cloneFromId: 'legacy-matriculation-physics',
-      },
-      'Clone',
-    );
-    assert.equal((await bank.curriculum.export(cloned.id)).semesters.length, 2);
-    assert.equal((await bank.list({ curriculum: cloned.id })).total, 0);
-    const topic = exported.document.question.topicId;
-    const impact = await bank.curriculum.impact('topics', topic);
-    await bank.curriculum.edit('topics', topic, {
-      name: 'TEST ONLY sdkrenamed',
-      note: 'Rename',
-      expectedRevision: impact.revision,
-      impactToken: impact.token,
-      confirmImpact: true,
-    });
-    assert.equal((await bank.list({ q: 'sdkrenamed' })).total, 2);
-    assert.deepEqual(await bank.savedClassification(q.id), exported.savedClassification);
-  } finally {
-    await bank.close();
-  }
-});
-
-test('libSQL failed content writes roll back questions, versions, classifications and search', async () => {
-  const bank = await isolatedBank();
-  try {
-    const { fixture } = await setup(bank);
-    await bank.db.exec(
-      "CREATE TRIGGER fail_sdk_parts BEFORE INSERT ON question_parts BEGIN SELECT RAISE(ABORT,'TEST_ONLY forced rollback'); END;",
-    );
-    await assert.rejects(
-      bank.create(fixture('TEST-SDK-ROLLBACK'), 'Initial', null, true),
-      /forced rollback/,
-    );
-    for (const table of [
-      'questions',
-      'question_versions',
-      'question_version_classifications',
-      'question_search',
-    ])
-      assert.equal((await bank.all('SELECT * FROM ' + table)).length, 0);
-    assert.deepEqual(await bank.all('PRAGMA foreign_key_check'), []);
   } finally {
     await bank.close();
   }

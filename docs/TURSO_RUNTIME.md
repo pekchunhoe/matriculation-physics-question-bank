@@ -1,3 +1,5 @@
+> Current checkout requires additive migration 006. Production remains unchanged on its existing schema. Earlier migration commands below do not apply 006; see [the controlled Preview sequence](production-and-pilot.md).
+
 # Turso runtime and Vercel setup
 
 The Express API now uses one server-side `@libsql/client/web` adapter. Production
@@ -157,12 +159,7 @@ npm run test:browser
 git diff --check
 ```
 
-All automatic tests use in-memory or temporary local SQLite/libSQL and mocked HTTP
-transport. Browser fixtures remain isolated. The separately invoked
-`scripts/turso-cloud-smoke.ts` refuses the production target and requires an explicit
-`physics-bank-runtime-smoke-*` scratch URL. Its disposable draft/CRUD/FTS/rollback
-test is followed by deletion of only the newly created scratch database. The
-production target is re-audited afterward to confirm no smoke fixtures leaked.
+All automatic tests use in-memory or temporary local SQLite/libSQL and mocked Blob transport. Browser fixtures remain isolated. The obsolete structured-question cloud smoke writer has been removed. Follow [the controlled Preview sequence](production-and-pilot.md) for the image architecture; migration 006 must only target independently verified isolated resources during Preview verification.
 
 The API also has a native ESM regression check. `tsconfig.api.json` uses NodeNext
 for the complete API dependency graph while the frontend keeps Bundler resolution.

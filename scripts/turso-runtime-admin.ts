@@ -223,12 +223,7 @@ try {
         throw new Error('Cloud foreign-key check failed');
       if ((await bank.one('PRAGMA integrity_check'))?.integrity_check !== 'ok')
         throw new Error('Cloud integrity check failed');
-      const filtered = await bank.list({
-        semester: 'semester-1',
-        difficulty: 'hard',
-        q: 'momentum',
-      });
-      if (filtered.total !== 0) throw new Error('Unexpected production question/search data');
+      if (Number((await bank.one('SELECT COUNT(*) n FROM questions'))!.n)!==0) throw new Error('Unexpected production question data');
       const schemaKinds = actual.reduce<Record<string, number>>((r, row) => {
         const k = String(row[0]);
         r[k] = (r[k] ?? 0) + 1;

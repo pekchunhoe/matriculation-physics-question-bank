@@ -1,3 +1,5 @@
+> Historical baseline for the earlier structured-question release. Current image architecture and release requirements are documented in [architecture.md](architecture.md) and [the refactor report](../IMAGE_BANK_REFACTOR_REPORT.md).
+
 # Logical SQLite → Turso migration tooling
 
 `scripts/migrate-sqlite-to-turso.py` runs under WSL using Python's standard library

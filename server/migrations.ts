@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { DatabaseAdapter } from './database-adapter.js';
 
-export const currentMigration = 5;
+export const currentMigration = 6;
 
 /** Explicit administrative operation; hosted request initialization never runs it. */
 export async function applyMigrations(
@@ -59,6 +59,11 @@ export async function assertCurrentSchema(db: DatabaseAdapter, expectedVersion =
   if (expectedVersion >= 5) {
     await db.execute('SELECT step_id,marking_code FROM solution_steps LIMIT 0');
     await db.execute('SELECT solution_step_id FROM hints LIMIT 0');
+  }
+  if (expectedVersion >= 6) {
+    await db.execute('SELECT id,question_image,answer_image,revision FROM image_questions LIMIT 0');
+    await db.execute('SELECT key,sha256,width,height FROM image_assets LIMIT 0');
+    await db.execute('SELECT question_id,classification FROM image_question_versions LIMIT 0');
   }
   // Preparing these reads also verifies the structures used by the current API.
   await db.execute(

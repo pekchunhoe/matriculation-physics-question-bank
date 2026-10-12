@@ -1,90 +1,37 @@
 # Matriculation Physics Question Bank
 
-A public approved-question bank with authenticated administrator authoring, relational Turso/libSQL persistence, server-side search and reviewed revisions. Students need no accounts. No authored Physics questions or invented official curriculum are seeded. SQLite remains available for isolated tests and recovery tooling.
+Image-based question bank with authenticated administration, stable paired question/answer records, versioned curricula and browser PDF export. This refactor is local and uncommitted. Production has not been migrated or deployed.
 
-## Run
+## Safe local preview
 
-Requires Node.js 24 or newer.
+Requires Node.js 24+. Run `npm ci`, then `npm run dev:local`. Open http://127.0.0.1:3100. This command builds the app and starts a disposable in-memory SQLite bank with clearly labelled test images and a test administrator from `tests/auth-fixture.ts`. It never reads Turso credentials. Its database is discarded on exit; its fixed, ownership-marked image directory is cleared on restart, including after interrupted runs; it is not a persistent authoring environment.
 
-Set server-side `TURSO_DATABASE_URL` and write-capable `TURSO_AUTH_TOKEN` in your terminal or secret manager first. See [admin setup](docs/ADMIN_SECURITY.md) and [Turso/Vercel setup](docs/TURSO_RUNTIME.md). This checkout requires migrations 001–005; startup verifies the schema and never runs migrations. Production migration 005 passed the separately authorized backup and existing-draft preservation checks. Application release status is recorded in [the Master rollout report](MASTER_FORMAT_FIDELITY_PRODUCTION_ROLLOUT_REPORT.md). Admin bootstrap and the auth migration CLI remain explicit operations; the auth migration CLI remains capped at 003.
+`npm run dev` and `npm start` use configured Turso credentials. Do not point this unreleased checkout at production: runtime requires migrations 001-006 and **never migrates automatically**. Production currently remains on its existing schema. See [migration and release boundaries](docs/architecture.md).
 
-```powershell
-npm install
-npm run dev
+## Workflow
+
+1. Administrators maintain the authoritative syllabus in Curriculum. Select a version, Semester 1 or Semester 2, chapter, topic and subtopic. Subtopics are not invented or seeded by migrations.
+2. Add one upright question image and one answer image (PNG, JPEG or WebP, at most 1.5 MiB each), all six dropdowns and positive integer total marks. Save creates one stable Question ID as a draft.
+3. Preview the saved originals. Publish explicitly after review. Published replacements require confirmation and the current revision; concurrent stale edits fail. Archive retains records, files and immutable history.
+4. Students filter approved questions, select at most 50 within one syllabus and semester, and download one A4 PDF. Questions precede answers, both in numeric curriculum order with matching numbering. Tall pictures span pages with a small overlap. Original embedded numbering should be removed from source images by their author before upload.
+
+Question JSON import, academic LaTeX/FBD processing and Word generation are removed. Curriculum JSON import/export remains available for maintaining the syllabus. The read-only administrator legacy archive preserves original structured records; explicit conversion requires a real image pair and complete classification and retains the original ID and legacy data.
+
+## Checks and storage
+
 ```
-
-Open **http://127.0.0.1:3000**. The migrated cloud database contains Matriculation Physics, Semester 1, Semester 2, Easy / Medium / Hard, and its reconstructed LEGACY curriculum version. Chapters and topics await your authoritative curriculum.
-
-For the production build:
-
-```powershell
-npm run build
-npm start
-```
-
-The local server binds to loopback. Public users can browse current approved questions, marking schemes and hints, select questions, and choose **PDF** or **Word (.docx)** plus **Question** or **Answer Scheme with Student's Hints** in the [public export workflow](docs/USER_PDF_WORD_EXPORT.md). All four combinations share syllabus ordering and consecutive numbering. Teacher notes, source PDFs, drafts/reviewing/retired records, revision history and authoring operations require server-side admin authentication. Preview modes remain presentation controls. Use **Admin login** for authoring; there is no registration or default account.
-
-## Use
-
-1. Sign in as an explicitly bootstrapped administrator. Prepare a draft curriculum version in **Curriculum**, import your authoritative hierarchy or add its records, verify it and activate it. Existing unversioned taxonomy is labelled LEGACY. See [curriculum administration](docs/curriculum.md).
-2. Choose **Add question** or **Import JSON**. Enter the original authored content, difficulty and marks. The app never infers difficulty or repairs marks.
-3. Review Student Preview and Teacher View. Student hints reveal one at a time for the whole question or each part.
-4. Save with a revision note. Initial approval requires explicit confirmation and an answer scheme for each leaf part.
-5. Editing an approved question creates a candidate. Compare current and candidate content, enter a reviewing teacher's name, confirm the decision and approve the replacement. The existing approved version remains active until that decision.
-6. Browse by semester, topic and difficulty. Active curriculum and Approved are defaults. Secondary version/visibility controls show old curricula/retired items; More filters controls question statuses.
-
-## Data and backup
-
-Runtime relational data lives in Turso. The original `data/bank.sqlite` and checkpointed backups are retained as recovery evidence and are no longer opened by runtime entry points. Local uploaded files remain in `data/uploads/`. These directories are excluded from Git. `BANK_DATA_DIR` changes local upload storage only; `PORT` changes the loopback port. Turso server credentials are required.
-
-Keep a Turso backup/export and a separate backup of local uploads because historical snapshots reference their files. The retained SQLite snapshot is the original recovery source, not a current cloud backup. JSON export preserves the structured question, solutions, hints, asset links, tags and stable code; files themselves are not embedded in JSON. Individual exports are not a full-database backup.
-
-Question codes are immutable after creation. Retire questions through a reviewed status change rather than deleting them. Removing an asset link preserves its uploaded file for historical versions. Uploaded files have unique names and cannot overwrite previous files.
-
-## Import contract
-
-See [the import guide](docs/import-format.md) and [the JSON schema](docs/question-v1.schema.json). Foreign keys, nested-part integrity, approval completeness and valid LaTeX receive additional server validation. Existing taxonomy is resolved rather than automatically created. An approved question is revised by explicitly selecting the existing-code revision action; a duplicate new import fails.
-
-## Checks
-
-```powershell
-npm run typecheck
 npm run lint
 npm test
 npm run db:check
 npm run schema:check
 npm run api:check
-npm run api:esm:check
-npm run storage:check
 npm run auth:check
+npm run storage:check
 npm run build
-npx playwright install chromium
 npm run test:browser
-git diff --check
+npm run clean:generated
 ```
 
-Unit and HTTP tests use isolated databases. Browser tests use an in-memory bank with clearly labelled TEST ONLY content on port 3100; they do not modify the real bank on port 3000. Browser results and screenshots are saved under ignored `test-results/` and `playwright-report/`.
+The last command is a dry run. Add `-- --apply` to remove only `dist`, `test-results` and `playwright-report`. It refuses links, junctions, credentials and database files. It never touches `data`, uploaded images or backups. Test output paths are bounded and reused; successful traces are not retained. PDF verification writes four fixed files under ignored `data/architecture-refactor/pdf`.
 
-`api:check` includes `api:esm:check`: it typechecks the complete API graph with NodeNext, audits unbundled emitted imports, and imports the compiled function with ordinary Node and no Turso credentials. Shared modules use explicit `.js` relative specifiers, which TypeScript and Vite resolve to their `.ts` sources. This catches native ESM resolution errors that bundling and `tsx` can hide.
-
-## Boundaries
-
-- PDF extraction is deliberately unimplemented. `PdfRevisionImportService` defines the validated candidate/diff/review boundary for a later parser adapter. There is no automatic PDF overwrite route.
-- No exam generator, random questions, numerical variants or AI Physics authoring are included.
-- Curriculum edits preserve stable IDs. Referenced subtrees cannot move in place; clone/import a new version for major changes. Retirement preserves questions/history. See [editing and migration policy](docs/curriculum.md).
-- Revision diffs compare every structured field. Collections such as parts, solutions, hints and assets appear as complete before/after JSON blocks; a finer per-field collection diff can be added later without changing canonical records.
-- Availability flags are author-controlled and are not inferred from content.
-
-See [architecture](docs/architecture.md) for the schema and revision design.
-
-This checkout includes the same-deployment Express API, native ESM checks, persistent admin sessions, durable abuse controls and resource-authorized Private Blob delivery. Anonymous authoring returns 401; administrators can upload validated files after login. Current approved diagrams/schemes are served publicly through the application; private authoring assets require admin identity. Hosted files are capped at 3 MiB; local uploads remain filesystem-based. See [security setup](docs/ADMIN_SECURITY.md), [security verification](ADMIN_DATABASE_SECURITY_REPORT.md), [asset storage](docs/ASSET_STORAGE.md) and [Turso runtime setup](docs/TURSO_RUNTIME.md). No deployment or production change was performed; earlier audit/storage/migration reports remain historical evidence.
-
-See [the production audit report](PRODUCTION_AUDIT_REPORT.md) for explicit PASS/FAIL results, data-preservation evidence and final test counts. The earlier FINAL_REPORT.md is retained as baseline evidence.
-
-## Self-contained Question JSON import
-
-Admins can use `/import/question-json` to paste or upload one JSON package, validate and review rendered content, and **Import as Draft**. Embedded diagrams/FBDs are supplied in that same file; no runtime AI/API token is needed. See [the complete format guide](docs/question-json-import-format.md), [generated schema](docs/question-json-import.schema.json), and [examples](examples/question-import).
-
-Migration 004 has been applied to Production after a verified cloud backup and complete preservation checks for its existing draft. The importer commit is pushed and deployed to Production after protected Preview, authenticated security and read-only application checks passed; runtime requests never migrate the database. See [rollout status](QUESTION_JSON_IMPORT_PRODUCTION_ROLLOUT_REPORT.md) and [future syllabus audit](SYLLABUS_VERSION_REUSE_AUDIT.md). Existing structured exports/revisions remain available at `/import`.
-
-Portable Question JSON excludes original PDF/question-number/page/region provenance. Preserve real PDF visuals through original extraction or lossless high-resolution rasterization/crop without redrawing or educational alterations. After successful import, source files may be discarded; canonical content is stored in database records and private visuals.
+Preserve both database and image-store backups. Historical pairs are retained intentionally. Failed saves remove only newly uploaded files verified to have no database references; uncertain results are retained for reconciliation. See [storage](docs/ASSET_STORAGE.md), [security](docs/ADMIN_SECURITY.md), and [refactor results](IMAGE_BANK_REFACTOR_REPORT.md). Older root rollout reports describe historical releases, not this checkout.

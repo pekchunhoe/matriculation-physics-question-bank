@@ -1,155 +1,100 @@
 import { createHash } from 'node:crypto';
-import { SaxesParser } from 'saxes';
+import sharp from 'sharp';
 import { assetDigestFromKey, assetMimeFromKey, type AssetMime } from '../shared/asset-reference.js';
+import { imageLimits } from '../shared/image-question.js';
 import { AssetStorageError, maxAssetBytes, type ValidatedUpload } from './asset-storage.js';
-
-const svgElements = new Set([
-  'svg',
-  'g',
-  'defs',
-  'symbol',
-  'use',
-  'path',
-  'rect',
-  'circle',
-  'ellipse',
-  'line',
-  'polyline',
-  'polygon',
-  'text',
-  'tspan',
-  'textPath',
-  'title',
-  'desc',
-  'clipPath',
-  'mask',
-  'marker',
-  'pattern',
-  'linearGradient',
-  'radialGradient',
-  'stop',
-  'image',
-]);
-function validateSvg(bytes: Buffer) {
-  const reject = () => {
-    throw new AssetStorageError(
-      'SVG contains invalid, active or externally referenced content',
-      400,
-      'invalid_svg',
-    );
-  };
-  let text: string;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    return reject();
-  }
-  const parser = new SaxesParser({ xmlns: true });
-  let root = false;
-  parser.on('error', reject);
-  parser.on('doctype', reject);
-  parser.on('processinginstruction', reject);
-  parser.on('opentag', (tag) => {
-    if (!root) {
-      if (tag.local !== 'svg') reject();
-      root = true;
-    }
-    if (!svgElements.has(tag.local) || !['', 'http://www.w3.org/2000/svg'].includes(tag.uri))
-      reject();
-    for (const attr of Object.values(tag.attributes)) {
-      const name = attr.local.toLowerCase(),
-        value = attr.value.trim();
-      if (name.startsWith('on') || name === 'base') reject();
-      if (attr.uri === 'http://www.w3.org/2000/xmlns/') {
-        if (!['http://www.w3.org/2000/svg', 'http://www.w3.org/1999/xlink'].includes(value))
-          reject();
-        continue;
-      }
-      if (
-        attr.uri &&
-        !['http://www.w3.org/1999/xlink', 'http://www.w3.org/XML/1998/namespace'].includes(attr.uri)
-      )
-        reject();
-      if (['href', 'src'].includes(name) && !/^#[a-zA-Z0-9_.:-]+$/.test(value)) reject();
-      if (value.includes('\\') || /@import|expression\s*\(|javascript\s*:|data\s*:/i.test(value))
-        reject();
-      for (const match of value.matchAll(/url\s*\(\s*([^)]*)\)/gi))
-        if (!/^#[a-zA-Z0-9_.:-]+$/.test(match[1].trim().replace(/^["']|["']$/g, ''))) reject();
-    }
-  });
-  try {
-    parser.write(text).close();
-  } catch {
-    reject();
-  }
-  if (!root) reject();
+function signature(bytes: Buffer): AssetMime | undefined {
+  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
+    return 'image/png';
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
+  if (bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP')
+    return 'image/webp';
 }
-
 export function validateUpload(
   bytes: Buffer,
   filename: string,
   declaredMime?: string,
 ): ValidatedUpload {
-  if (!bytes.length) throw new AssetStorageError('Choose a nonempty file', 400, 'file_size');
-  if (bytes.length > maxAssetBytes)
-    throw new AssetStorageError('Files must be no larger than 20 MiB', 413, 'file_size');
+  if (!bytes.length || bytes.length > imageLimits.bytes)
+    throw new AssetStorageError('Each image must be 1 byte?1.5 MiB', 413, 'file_size');
   if (
     !filename.trim() ||
     filename.length > 200 ||
     /[\\/:]|%[0-9a-f]{2}|\p{Cc}|\p{Cf}/iu.test(filename) ||
-    filename.includes('..') ||
-    filename.trim() === '.'
+    filename.includes('..')
   )
     throw new AssetStorageError('Invalid display filename', 400, 'invalid_filename');
-  let extension: string, mime: AssetMime;
-  if (bytes.subarray(0, 5).toString() === '%PDF-') {
-    extension = 'pdf';
-    mime = 'application/pdf';
-  } else if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-    extension = 'png';
-    mime = 'image/png';
-  } else if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
-    extension = 'jpg';
-    mime = 'image/jpeg';
-  } else if (
-    bytes.subarray(0, 4).toString() === 'RIFF' &&
-    bytes.subarray(8, 12).toString() === 'WEBP'
-  ) {
-    extension = 'webp';
-    mime = 'image/webp';
-  } else if (/^(?:\uFEFF)?\s*(?:<\?xml[^>]*\?>\s*)?<svg[\s>]/i.test(bytes.toString('utf8'))) {
-    validateSvg(bytes);
-    extension = 'svg';
-    mime = 'image/svg+xml';
-  } else
-    throw new AssetStorageError('Supported files: SVG, PNG, JPEG, WebP, PDF', 400, 'invalid_file');
-  if (declaredMime && declaredMime !== 'application/octet-stream' && declaredMime !== mime)
-    throw new AssetStorageError('File MIME type does not match its content', 400, 'invalid_mime');
-  const suffix = filename.trim().split('.');
-  if (suffix.length > 1 && assetMimeFromKey(filename.trim().toLowerCase()) !== mime)
+  const mime = signature(bytes);
+  if (!mime) throw new AssetStorageError('Choose a PNG, JPEG or WebP image', 400, 'invalid_file');
+  if (
+    (declaredMime && declaredMime !== 'application/octet-stream' && declaredMime !== mime) ||
+    assetMimeFromKey(filename.toLowerCase()) !== mime
+  )
     throw new AssetStorageError(
-      'Filename extension does not match file content',
+      'Image extension, MIME type and content must match',
       400,
       'invalid_mime',
     );
   return {
     bytes: Buffer.from(bytes),
-    extension,
     mime,
-    displayName: filename.trim().normalize('NFC'),
+    extension: mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp',
+    displayName: filename,
     sha256: createHash('sha256').update(bytes).digest('hex'),
   };
 }
-
-export function verifyStoredContent(key: string, bytes: Buffer, mime: AssetMime) {
-  let actual: ValidatedUpload;
+/** Decode all pixels; retain original bytes. Only the question-list thumbnail is resized. */
+export async function validateImage(
+  bytes: Buffer,
+  filename: string,
+  mime?: string,
+  thumbnail = false,
+) {
+  const upload = validateUpload(bytes, filename, mime);
   try {
-    actual = validateUpload(bytes, key, mime);
+    const image = sharp(bytes, { failOn: 'warning', limitInputPixels: imageLimits.pixels });
+    const meta = await image.metadata();
+    if (
+      !meta.width ||
+      !meta.height ||
+      meta.width > imageLimits.width ||
+      meta.height > imageLimits.height ||
+      (meta.pages ?? 1) !== 1 ||
+      (meta.orientation ?? 1) !== 1
+    )
+      throw new Error('Invalid dimensions, animation or orientation');
+    await image.clone().stats();
+    const thumb = thumbnail
+      ? await image
+          .clone()
+          .resize({ width: 480, height: 640, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 78 })
+          .toBuffer()
+      : undefined;
+    return { upload, width: meta.width, height: meta.height, thumbnail: thumb };
   } catch {
-    throw new AssetStorageError('Asset integrity check failed', 503, 'integrity_failed');
+    throw new AssetStorageError(
+      'Image must decode completely, be static and upright, and fit 12,000 ? 30,000 pixels / 40 megapixels. Export an upright PNG/JPEG/WebP and retry.',
+      400,
+      'invalid_image',
+    );
   }
-  const expected = assetDigestFromKey(key);
-  if (expected && actual.sha256 !== expected)
+}
+export function verifyStoredContent(key: string, bytes: Buffer, mime: AssetMime) {
+  const digest = createHash('sha256').update(bytes).digest('hex'),
+    expected = assetDigestFromKey(key);
+  // Historical PDF/SVG files remain administrator-only attachments, with no interpretation.
+  const historical =
+    mime === 'application/pdf'
+      ? bytes.subarray(0, 5).toString() === '%PDF-'
+      : mime === 'image/svg+xml' && /<svg[\s>]/i.test(bytes.subarray(0, 4096).toString());
+  if (
+    !bytes.length ||
+    bytes.length > maxAssetBytes ||
+    assetMimeFromKey(key) !== mime ||
+    (!historical && signature(bytes) !== mime) ||
+    (expected && expected !== digest)
+  )
     throw new AssetStorageError('Asset integrity check failed', 503, 'integrity_failed');
-  return actual.sha256;
+  return digest;
 }

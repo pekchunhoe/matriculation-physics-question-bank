@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { documentSchema } from './schema.js';
 const id = z.string().min(1).max(120),
   name = z
     .string()
@@ -99,13 +98,6 @@ export const classificationSchema = z
   })
   .strict();
 export type Classification = z.infer<typeof classificationSchema>;
-export const questionExportSchema = z
-  .object({
-    schemaVersion: z.literal(2),
-    document: documentSchema,
-    savedClassification: classificationSchema,
-  })
-  .strict();
 export type CurriculumImpact = {
   id: string;
   kind: EditableKind | 'curriculumVersions';

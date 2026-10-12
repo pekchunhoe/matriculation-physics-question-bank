@@ -1,3 +1,5 @@
+> Historical baseline for the earlier structured-question release. Current image architecture and release requirements are documented in [architecture.md](architecture.md) and [the refactor report](../IMAGE_BANK_REFACTOR_REPORT.md).
+
 # Audit before changes
 
 Baseline commit: `fb06375`. Working tree was clean at audit start. Existing architecture: React/Vite frontend, Express API, local SQLite (Node 24), shared Zod validation, KaTeX, local file storage. The existing 30 unit/HTTP and 12 browser tests all passed before edits; typecheck, lint, migration and question-schema checks passed.

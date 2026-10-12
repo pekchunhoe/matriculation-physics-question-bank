@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "curriculumVersionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "semesterId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "chapterId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "topicId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "subtopicId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "difficultyId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "totalMarks": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 10000
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "confirmPublishedReplacement": {
+      "type": "boolean"
+    },
+    "legacyId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    }
+  },
+  "required": [
+    "curriculumVersionId",
+    "semesterId",
+    "chapterId",
+    "topicId",
+    "subtopicId",
+    "difficultyId",
+    "totalMarks"
+  ],
+  "additionalProperties": false
+}

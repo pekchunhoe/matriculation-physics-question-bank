@@ -10,7 +10,7 @@ In **Curriculum**, create an empty draft or clone an existing hierarchy using yo
 
 Versions have optional ISO effective dates, order and draft/active/retired status. Only one version can be active per course. Activation requires impact review and transactionally retires the previous active version; its question count is displayed. Retirement preserves hierarchy/history. Reactivation uses the same control. An active version cannot return to draft.
 
-Browsing defaults to active curriculum and hierarchy. Semester/Topic/Difficulty remain primary; secondary controls select any/all versions and include retired items. URL state preserves these choices. Old bookmarks supplying a semester without a version retain access. API defaults retain all-version behavior unless `curriculum=active`, a version ID or `taxonomyStatus=active` is supplied.
+Browsing defaults to the active curriculum. Dependent dropdowns select version, semester, chapter, topic, subtopic and difficulty. Changing a parent clears child selections; changing version or semester also clears a student question selection. Numeric stored order determines browsing and PDF order, with stable Question ID as the final tie breaker. Retired versions remain available, while drafts remain administrator-only.
 
 The existing add form remains. New semesters select their course/version; other records select a parent. New records cannot be added under retired ancestry/version. The edit form supports rename, nonnegative integer display order, retire and restore for all four levels. IDs/slugs stay stable; normalized names remain unique under their parent/version. Retirement does not change question status/content. Restoring a child does not restore its ancestors.
 
@@ -18,7 +18,7 @@ Impact previews show current questions, distinct historical questions, pending r
 
 ## Historical provenance
 
-Canonical question v1 and immutable snapshots remain unchanged. The companion `question_version_classifications` table freezes each version's ancestry names/IDs. New saves/promotions capture names at that time. Renames update current search/browse labels while saved labels remain. Teacher preview shows saved ancestry/difficulty/counts; historical headers use saved names.
+Image question history captures the full classification alongside each immutable pair snapshot. Existing legacy question snapshots and their classification companion table are preserved. Renames change current browsing labels without rewriting historical labels.
 
 Pre-migration names were never recorded. Migration reconstructs old classifications from available taxonomy and labels them `reconstructed`; names changed earlier cannot be recovered. If history references missing taxonomy, migration rolls back explicitly. Restore missing records from backup rather than deleting history. `curriculum_events` logs before/after metadata, note and time. New question assignments cannot use retired ancestry; existing questions may retain their retired classification when revised. No authored Physics values are repaired or inferred.
 
