@@ -1,3 +1,4 @@
+import { seedStudentSession } from '../tests/student-fixture.js';
 import express from 'express';
 import {
   mkdirSync,
@@ -46,6 +47,7 @@ if (existsSync(uploads)) {
 const { bank, fixture, c1 } = await setup(),
   app = createApp(bank, new LocalAssetStorage(uploads));
 await seedAdminSession(bank);
+await seedStudentSession(bank);
 const storage = new LocalAssetStorage(uploads),
   service = new ImageQuestionService(bank, storage);
 const actor = String((await bank.one('SELECT id FROM admins WHERE email=?', testEmail))!.id);
@@ -76,6 +78,7 @@ for (let i = 0; i < 50; i++) {
   const q = (await service.save(undefined, metadata, pair, actor)).question;
   await service.status(q.id, { status: 'approved', expectedRevision: 1, confirmed: true }, actor);
 }
+app.get('/verify-email', (_req, res) => res.sendFile(resolve('dist/verify-email.html')));
 app.use(express.static(resolve('dist')));
 app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));
 const server = app.listen(3100, '127.0.0.1', () =>

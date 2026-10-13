@@ -10,15 +10,23 @@ import { assetKeyFromReference } from '../shared/asset-reference.js';
 import { editableKinds } from './curriculum.js';
 import type { EditableKind } from '../shared/curriculum.js';
 import { securityHeaders } from './security-headers.js';
+import { StudentService } from './students.js';
+import { studentEmailConfiguration, type VerificationMailer } from './student-email.js';
 export function createApp(
   bank: Bank,
   storage: AssetStorage | undefined,
-  options: { hosted?: boolean; development?: boolean } = {},
+  options: {
+    hosted?: boolean;
+    development?: boolean;
+    studentEmail?: { mailer: VerificationMailer; origin: string };
+  } = {},
 ) {
   const app = express(),
     auth = new AuthService(bank, options.hosted ?? false),
     visibility = new VisibilityService(bank),
     questions = new ImageQuestionService(bank, storage);
+  const email = options.studentEmail ?? studentEmailConfiguration();
+  const students = new StudentService(bank, options.hosted ?? false, email.mailer, email.origin);
   const identities = new WeakMap<express.Request, AdminIdentity>();
   const admin: express.RequestHandler = async (req, _res, next) => {
     if (!identities.has(req)) identities.set(req, await auth.requireAdmin(req));
@@ -38,21 +46,28 @@ export function createApp(
       res.setHeader(key, value);
     }
     res.setHeader('Cache-Control', 'private, no-store');
+    if (['/verify-email', '/verify-email.html'].includes(req.path)) {
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      if (!options.development)
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        );
+    }
     if (auth.hosted) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     next();
-  });
-  app.get('/api/health', async (_req, res) => {
-    try {
-      await bank.one('SELECT 1 AS connected');
-      res.json({ status: 'ok', database: 'connected' });
-    } catch {
-      res.status(503).json({ status: 'error', database: 'unavailable' });
-    }
   });
   app.use('/api', (req, res, next) => {
     if (
       !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
-      !['/auth/login', '/auth/logout'].includes(req.path)
+      ![
+        '/auth/login',
+        '/auth/logout',
+        '/student-auth/login',
+        '/student-auth/logout',
+        '/student-auth/verify-email',
+      ].includes(req.path)
     )
       return admin(req, res, () => {
         auth.csrf(req);
@@ -74,30 +89,109 @@ export function createApp(
     res.json({ authenticated: false });
   });
   app.get('/api/auth/session', async (req, res) => {
-    const user = await auth.identity(req);
+    const user = (await auth.identity(req)) ?? (await students.identity(req));
     res.json(user ? { authenticated: true, user } : { authenticated: false });
   });
+  app.post(
+    '/api/student-auth/login',
+    (req, _res, next) => {
+      auth.csrf(req);
+      next();
+    },
+    express.json({ limit: '4kb' }),
+    async (req, res) => res.json(await students.login(req, res)),
+  );
+  app.post('/api/student-auth/logout', async (req, res) => {
+    await students.logout(req, res);
+    res.json({ authenticated: false });
+  });
+  app.post(
+    '/api/student-auth/verify-email',
+    (req, _res, next) => {
+      auth.csrf(req);
+      next();
+    },
+    express.json({ limit: '4kb' }),
+    async (req, res) => {
+      await auth.limit('student-verify-ip', auth.clientAddress(req), 20, 60000);
+      await auth.limit('student-verify-global', 'all', 120, 60000);
+      await students.verify(req.body?.token);
+      res.json({
+        verified: true,
+        message: 'Email verified. Your administrator must now issue your access code.',
+      });
+    },
+  );
   app.use(express.json({ limit: '3mb' }));
   app.use('/api', async (req, _res, next) => {
     if (!identities.has(req)) {
       const identity = await auth.identity(req);
       if (identity) identities.set(req, identity);
     }
+    if (!identities.has(req) && !(await students.identity(req)))
+      throw new BankError('Sign in to access the Question Bank', 401);
     next();
   });
+  app.get('/api/health', async (_req, res) => {
+    await bank.one('SELECT 1 AS connected');
+    res.json({ status: 'ok', database: 'connected' });
+  });
+  app.get('/api/admin/students', admin, async (req, res) =>
+    res.json(await students.list(req.query.search, req.query.page)),
+  );
+  app.post('/api/admin/students', async (req, res) => {
+    await auth.limit('student-register-global', 'all', 50, 86400000);
+    res
+      .status(201)
+      .json(await students.register(req.body?.email, req.body?.requestId, identities.get(req)!.id));
+  });
+  app.post('/api/admin/students/:id/send', async (req, res) =>
+    res.json(
+      await students.send(
+        String(req.params.id),
+        req.body?.revision,
+        req.body?.requestId,
+        identities.get(req)!.id,
+      ),
+    ),
+  );
+  app.post('/api/admin/students/:id/verification-link', async (req, res) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.json(
+      await students.manualLink(
+        String(req.params.id),
+        req.body?.revision,
+        req.body?.requestId,
+        identities.get(req)!.id,
+      ),
+    );
+  });
+  app.post('/api/admin/students/:id/:action', async (req, res) =>
+    res.json(
+      await students.manage(
+        String(req.params.id),
+        req.body?.revision,
+        String(req.params.action),
+        identities.get(req)!.id,
+        req.body?.email,
+      ),
+    ),
+  );
   app.get('/api/public/question-set', async (req, res) => {
     await auth.limit('public-print-ip', auth.clientAddress(req), 20, 60000);
     await auth.limit('public-print-global', 'all', 500, 60000);
     res.json(await questions.questionSet(req.query.ids));
   });
   app.use('/uploads', async (req, res) => {
+    const identity = await auth.identity(req);
+    if (!identity && !(await students.identity(req)))
+      throw new BankError('Sign in to access question images', 401);
     if (!storage) throw new AssetStorageError('Asset storage is not configured');
     if (!['GET', 'HEAD'].includes(req.method))
       throw new BankError('Asset delivery accepts read requests only', 405);
     const reference = '/uploads' + req.path,
       key = assetKeyFromReference(reference);
     if (!key) throw new BankError('Invalid asset reference');
-    const identity = await auth.identity(req);
     if (!identity && !(await questions.publicAsset(reference)))
       throw new BankError('Asset not found', 404);
     const result = await storage.get(key);

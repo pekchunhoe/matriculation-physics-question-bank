@@ -34,7 +34,7 @@ export async function hashPassword(password: string) {
     key = await derive(password, salt);
   return `scrypt$32768$8$3$${salt.toString('hex')}$${key.toString('hex')}`;
 }
-async function verifyPassword(password: string, hash: string) {
+export async function verifyPassword(password: string, hash: string) {
   const fields = hash.split('$');
   if (
     fields.length !== 6 ||

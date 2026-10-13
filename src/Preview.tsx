@@ -43,7 +43,7 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
             <a className="button" href="/">
               Question bank
             </a>
-            {session.authenticated && (
+            {session.user?.role === 'admin' && (
               <a className="button" href={'/edit/' + q.id}>
                 Edit question
               </a>

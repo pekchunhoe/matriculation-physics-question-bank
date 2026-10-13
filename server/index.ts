@@ -17,9 +17,14 @@ const app = createApp(bank, new LocalAssetStorage(resolve(data, 'uploads')), {
   development: !production,
 });
 if (production) {
+  app.get('/verify-email', (_req, res) => res.sendFile(resolve('dist/verify-email.html')));
   app.use(express.static(resolve('dist')));
   app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));
 } else {
+  app.use('/verify-email', (req, _res, next) => {
+    req.url = '/verify-email.html';
+    next();
+  });
   const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
   app.use(vite.middlewares);
 }

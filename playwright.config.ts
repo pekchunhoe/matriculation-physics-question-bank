@@ -12,7 +12,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'npm run test:browser:server',
-    url: 'http://127.0.0.1:3100/api/taxonomy',
+    url: 'http://127.0.0.1:3100/api/auth/session',
     reuseExistingServer: false,
     timeout: 30000,
   },

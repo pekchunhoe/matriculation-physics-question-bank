@@ -127,13 +127,15 @@ test('/api/health checks connectivity and returns only safe status fields', asyn
   const bank = await createTestBank();
   try {
     await withHandler(createApp(bank, undefined), async (base) => {
-      const health = await fetch(base + '/api/health');
+      const request = authenticatedFetch(await seedAdminSession(bank));
+      assert.equal((await fetch(base + '/api/health')).status, 401);
+      const health = await request(base + '/api/health');
       assert.equal(health.status, 200);
       assert.deepEqual(await health.json(), { status: 'ok', database: 'connected' });
       await bank.close();
-      const failed = await fetch(base + '/api/health');
-      assert.equal(failed.status, 503);
-      assert.deepEqual(await failed.json(), { status: 'error', database: 'unavailable' });
+      const failed = await request(base + '/api/health');
+      assert.equal(failed.status, 500);
+      assert.deepEqual(await failed.json(), { error: 'Unexpected server error' });
     });
   } catch (error) {
     await bank.close();
@@ -155,9 +157,12 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
       ])
         assert.equal((await fetch(base + path, { method })).status, 401);
       assert.equal((await fetch(base + '/api/uploads', { method: 'POST' })).status, 401);
-      assert.equal((await fetch(base + '/uploads/test.pdf')).status, 503);
-      assert.equal((await fetch(base + '/api/questions')).status, 200);
-      assert.equal((await fetch(base + '/api/taxonomy')).status, 200);
+      assert.equal((await fetch(base + '/uploads/test.pdf')).status, 401);
+      const request = authenticatedFetch(await seedAdminSession(bank));
+      assert.equal((await request(base + '/uploads/test.pdf')).status, 503);
+      assert.equal((await fetch(base + '/api/questions')).status, 401);
+      assert.equal((await fetch(base + '/api/taxonomy')).status, 401);
+      assert.equal((await request(base + '/api/questions')).status, 200);
       assert.equal(Number((await bank.one('SELECT COUNT(*) n FROM image_questions'))!.n), 0);
       assert.equal((await bank.taxonomy()).chapters.length, 0);
     });
@@ -168,9 +173,10 @@ test('Hosted API blocks anonymous mutations and reports missing durable uploads'
 
 test('Async Express transport errors do not expose stack traces, URLs or secrets', async () => {
   const bank = await createTestBank();
+  const request = authenticatedFetch(await seedAdminSession(bank));
   await bank.close();
   await withHandler(createApp(bank, undefined), async (base) => {
-    const response = await fetch(base + '/api/taxonomy');
+    const response = await request(base + '/api/taxonomy');
     assert.equal(response.status, 500);
     assert.deepEqual(await response.json(), { error: 'Unexpected server error' });
   });
@@ -185,12 +191,13 @@ test('Vercel handler routes nested API requests without opening SQLite or upload
   });
   try {
     await withHandler(handler, async (base) => {
-      assert.equal((await fetch(base + '/api/health')).status, 200);
-      const taxonomy = await (await fetch(base + '/api/taxonomy')).json();
+      const request = authenticatedFetch(await seedAdminSession(bank, true));
+      assert.equal((await request(base + '/api/health')).status, 200);
+      const taxonomy = await (await request(base + '/api/taxonomy')).json();
       assert.equal(taxonomy.curriculumVersions.length, 1);
       assert.equal(taxonomy.semesters.length, 2);
       assert.equal(
-        (await fetch(base + '/api/questions?semester=semester-1&difficulty=hard')).status,
+        (await request(base + '/api/questions?semester=semester-1&difficulty=hard')).status,
         200,
       );
       assert.equal(
@@ -201,7 +208,7 @@ test('Vercel handler routes nested API requests without opening SQLite or upload
         ).status,
         200,
       );
-      assert.equal((await fetch(base + '/api/unknown')).status, 404);
+      assert.equal((await request(base + '/api/unknown')).status, 404);
       assert.equal((await fetch(base + '/api/questions', { method: 'POST' })).status, 401);
       assert.equal(connections, 1);
     });
@@ -225,7 +232,10 @@ test('Vercel handler safely reports failed initialization and retries on the nex
       const failed = await fetch(base + '/api/taxonomy');
       assert.equal(failed.status, 503);
       assert.deepEqual(await failed.json(), { error: 'Database unavailable' });
-      assert.equal((await fetch(base + '/api/health')).status, 200);
+      assert.equal(
+        (await authenticatedFetch(await seedAdminSession(bank, true))(base + '/api/health')).status,
+        200,
+      );
     });
   } finally {
     await bank.close();
@@ -236,11 +246,11 @@ test('Vercel config routes API/uploads before SPA fallback and includes the Type
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
   assert.equal(config.framework, 'vite');
   assert.equal(config.outputDirectory, 'dist');
-  assert.deepEqual(config.rewrites.slice(0, 2), [
+  assert.deepEqual(config.rewrites.slice(1, 3), [
     { source: '/api/:path*', destination: '/api' },
     { source: '/uploads/:path*', destination: '/api' },
   ]);
-  const spa = new RegExp('^' + config.rewrites[2].source + '$');
+  const spa = new RegExp('^' + config.rewrites[3].source + '$');
   for (const path of ['/', '/curriculum', '/questions/test']) assert.ok(spa.test(path));
   for (const path of ['/api', '/api/health', '/uploads/test.pdf', '/assets/index.js'])
     assert.ok(!spa.test(path));

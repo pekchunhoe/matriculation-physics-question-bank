@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './student-fixture.js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 import { installAxe } from './accessibility.js';
@@ -68,6 +68,7 @@ test('Student cannot open editor or write through direct API, including obsolete
     expect((await request.get(url)).status()).toBe(401);
 });
 test('Administrator login and logout use the existing protected session flow', async ({ page }) => {
+  await page.context().clearCookies();
   await page.goto('/admin/login');
   await page.getByLabel('Administrator email').fill(testEmail);
   await page.getByLabel('Password').fill(testPassword);

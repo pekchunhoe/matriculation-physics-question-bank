@@ -133,8 +133,8 @@ test('Migration 7 preserves populated version-6 tables, histories, indexes, trig
       )
     ).rows;
     const foreignKeys = (await db.execute('PRAGMA foreign_key_list(image_questions)')).rows;
-    await applyMigrations(db);
-    await assertCurrentSchema(db);
+    await applyMigrations(db, { throughVersion: 7 });
+    await assertCurrentSchema(db, 7);
     for (const [name, rows] of before)
       if (name !== 'schema_migrations')
         assert.deepEqual((await db.execute(`SELECT * FROM "${name}" ORDER BY 1`)).rows, rows, name);
@@ -172,7 +172,7 @@ test('Migration 7 preserves populated version-6 tables, histories, indexes, trig
     );
     await e.bank.run('UPDATE image_questions SET subtopic_id=NULL WHERE id=?', q.id);
     assert.equal((await e.service.get(q.id, true)).subtopicId, null);
-    await applyMigrations(db);
+    await applyMigrations(db, { throughVersion: 7 });
     assert.equal((await db.execute('SELECT COUNT(*) n FROM schema_migrations')).rows[0].n, 7);
   } finally {
     await e.close();

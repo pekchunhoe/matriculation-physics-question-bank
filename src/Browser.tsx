@@ -78,7 +78,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
           <h1>Question bank</h1>
           <p>Choose questions and download a PDF with matching answers.</p>
         </div>
-        {session.authenticated && (
+        {session.user?.role === 'admin' && (
           <a href="/edit/new" className="button primary">
             Add question
           </a>
@@ -100,7 +100,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
               setPage(1);
             }}
           />
-          {session.authenticated && (
+          {session.user?.role === 'admin' && (
             <Field label="Status">
               <select
                 value={status}
@@ -127,7 +127,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
             />
           </Field>
           <a href="/curriculum">View syllabus hierarchy</a>
-          {session.authenticated && <a href="/admin/legacy">Legacy archive</a>}
+          {session.user?.role === 'admin' && <a href="/admin/legacy">Legacy archive</a>}
         </aside>
         <section className="results" aria-label="Matching questions">
           {selected.length > 0 && (
@@ -207,7 +207,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                     <a className="button" href={'/questions/' + q.id}>
                       Preview
                     </a>
-                    {session.authenticated && (
+                    {session.user?.role === 'admin' && (
                       <a className="button" href={'/edit/' + q.id}>
                         Edit
                       </a>

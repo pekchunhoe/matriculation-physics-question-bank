@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import type { Taxonomy } from '../shared/schema';
 import { api } from './api';
 import { Browser } from './Browser';
-import { AuthProvider, useAuth, AdminLogin, Logout } from './Auth';
+import { AuthProvider, useAuth, AdminLogin, StudentLogin, Logout } from './Auth';
 import { PublicCurriculum } from './PublicCurriculum';
 import './styles.css';
 
@@ -14,9 +14,10 @@ const LegacyArchive = lazy(() =>
   import('./LegacyArchive').then((m) => ({ default: m.LegacyArchive })),
 );
 const QuestionSet = lazy(() => import('./QuestionSet').then((m) => ({ default: m.QuestionSet })));
+const Students = lazy(() => import('./Students').then((m) => ({ default: m.Students })));
 function App() {
   const { session, loading } = useAuth();
-  const admin = session.authenticated;
+  const admin = session.user?.role === 'admin';
   const [tax, setTax] = useState<Taxonomy | null>(null),
     [error, setError] = useState('');
   const load = () =>
@@ -24,8 +25,9 @@ function App() {
       .then(setTax)
       .catch((e) => setError(e.message));
   useEffect(() => {
-    void load();
-  }, [admin]);
+    if (session.authenticated) void load();
+    else setTax(null);
+  }, [admin, session.authenticated]);
   const path = location.pathname.split('/').filter(Boolean),
     current = path[0] ?? 'bank';
   return (
@@ -49,7 +51,8 @@ function App() {
               Add question
             </a>
           )}
-          {admin ? <Logout /> : <a href="/admin/login">Admin login</a>}
+          {admin && <a href="/admin/students">Student access</a>}
+          {session.authenticated ? <Logout /> : <a href="/admin/login">Admin login</a>}
         </nav>
       </header>
       <main>
@@ -59,9 +62,15 @@ function App() {
           </p>
         )}
         <Suspense fallback={<p role="status">Loading...</p>}>
-          {current === 'admin' && path[1] !== 'legacy' ? (
+          {current === 'admin' && (path[1] === 'login' || !admin) ? (
             <AdminLogin />
-          ) : loading || !tax ? (
+          ) : loading ? (
+            <p role="status">Loading...</p>
+          ) : !session.authenticated ? (
+            <StudentLogin />
+          ) : current === 'admin' && path[1] === 'students' ? (
+            <Students />
+          ) : !tax ? (
             <p role="status">Loading...</p>
           ) : (['edit', 'import'].includes(current) ||
               (current === 'admin' && path[1] === 'legacy')) &&

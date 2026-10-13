@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { DatabaseAdapter } from './database-adapter.js';
 
-export const currentMigration = 7;
+export const currentMigration = 8;
 
 /** Explicit administrative operation; hosted request initialization never runs it. */
 export async function applyMigrations(
@@ -40,10 +40,8 @@ export async function applyMigrations(
             'Curriculum migration cannot reconstruct every historical classification. Restore missing taxonomy records from backup before retrying. Migration rolled back.',
           );
       }
-      if (version === 7 && (await db.execute('PRAGMA foreign_key_check')).rows.length)
-        throw new Error(
-          'Optional subtopic migration failed its foreign-key check; transaction rolled back',
-        );
+      if (version >= 7 && (await db.execute('PRAGMA foreign_key_check')).rows.length)
+        throw new Error('Migration failed its foreign-key check; transaction rolled back');
       await db.execute('INSERT INTO schema_migrations VALUES(?,?)', [
         version,
         new Date().toISOString(),
@@ -73,6 +71,18 @@ export async function assertCurrentSchema(db: DatabaseAdapter, expectedVersion =
     const columns = (await db.execute('PRAGMA table_info(image_questions)')).rows;
     if (columns.find((column) => column.name === 'subtopic_id')?.notnull !== 0)
       throw new Error('Optional subtopic schema is not current');
+  }
+  if (expectedVersion >= 8) {
+    await db.execute(
+      'SELECT id,email_key,email_verified_at,access_code_hash,credential_version FROM students LIMIT 0',
+    );
+    await db.execute(
+      'SELECT token_digest,consumed_at,delivery_state FROM student_email_challenges LIMIT 0',
+    );
+    await db.execute(
+      'SELECT token_digest,credential_version,revoked_at FROM student_sessions LIMIT 0',
+    );
+    await db.execute('SELECT student_id,actor_id,action FROM student_access_events LIMIT 0');
   }
   // Preparing these reads also verifies the structures used by the current API.
   await db.execute(

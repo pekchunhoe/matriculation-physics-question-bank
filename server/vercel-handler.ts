@@ -6,6 +6,7 @@ import type { AssetStorage } from './asset-storage.js';
 import { hostedAssetStorage } from './vercel-blob-storage.js';
 import { securityHeaders } from './security-headers.js';
 import { assertPreviewIsolation, verifyPreviewIsolation } from './preview-isolation.js';
+import { studentEmailConfiguration } from './student-email.js';
 
 /** Exported Express handler for the same Vite deployment, without listen() or disk writes. */
 export function createApiHandler(
@@ -45,7 +46,10 @@ export function createApiHandler(
         } catch {
           /* Invalid storage configuration fails closed without breaking DB health. */
         }
-        app = createApp(await loadBank(), storage, { hosted: true });
+        app = createApp(await loadBank(), storage, {
+          hosted: true,
+          studentEmail: studentEmailConfiguration(env),
+        });
       }
     } catch {
       if (req.url?.split('?')[0] === '/api/health')

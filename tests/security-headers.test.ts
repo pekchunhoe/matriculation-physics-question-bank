@@ -64,7 +64,7 @@ test('Cold-start database failures retain security headers and cannot be cached'
 
 test('Vercel static headers match the server policy without overriding sandboxed uploads', () => {
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
-  const documents = config.headers[0];
+  const documents = config.headers[1];
   assert.deepEqual(
     Object.fromEntries(
       documents.headers.map((h: { key: string; value: string }) => [h.key, h.value]),
@@ -76,10 +76,16 @@ test('Vercel static headers match the server policy without overriding sandboxed
     assert.ok(match.test(path));
   for (const path of ['/uploads/test.svg', '/uploads', '/api/health', '/api'])
     assert.ok(!match.test(path));
-  const privateRoutes = new RegExp('^' + config.headers[1].source + '$');
+  const privateRoutes = new RegExp('^' + config.headers[2].source + '$');
   for (const path of ['/admin/login', '/edit/new', '/import', '/import/question-json'])
     assert.ok(privateRoutes.test(path));
-  assert.equal(config.headers[1].headers[0].value, 'private, no-store');
+  assert.equal(config.headers[2].headers[0].value, 'private, no-store');
+  const verification = Object.fromEntries(
+    config.headers[0].headers.map((h: { key: string; value: string }) => [h.key, h.value]),
+  );
+  assert.equal(verification['Referrer-Policy'], 'no-referrer');
+  assert.equal(verification['Cache-Control'], 'private, no-store');
+  assert.ok(!String(verification['Content-Security-Policy']).includes('google'));
   assert.ok(!contentSecurityPolicy.includes('unsafe-eval'));
   assert.ok(!contentSecurityPolicy.includes("script-src 'self' 'unsafe-inline'"));
   assert.ok(!contentSecurityPolicy.includes('*'));

@@ -13,6 +13,7 @@ import { applyMigrations } from '../server/migrations.js';
 import { TursoAdapter } from '../server/turso-adapter.js';
 import { setup } from './fixtures.js';
 import { seedAdminSession, authenticatedFetch, testEmail, testPassword } from './auth-fixture.js';
+import { seedStudentSession } from './student-fixture.js';
 
 const json = (data: unknown, headers: Record<string, string> = {}) => ({
   headers: { 'Content-Type': 'application/json', ...headers },
@@ -256,7 +257,7 @@ test('Distributed atomic throttle counters bound concurrent libSQL instances and
   }
 });
 
-test('Public curriculum hides draft branches while authenticated admin can inspect and modify them', async () =>
+test('Student curriculum hides draft branches while authenticated admin can inspect and modify them', async () =>
   environment(async ({ bank }) => {
     const draft = await bank.curriculum.createVersion(
       {
@@ -274,7 +275,10 @@ test('Public curriculum hides draft branches while authenticated admin can inspe
     );
     const request = authenticatedFetch(await seedAdminSession(bank));
     await serve(createApp(bank, undefined), async (base) => {
-      const publicTax = await (await fetch(base + '/api/taxonomy')).json();
+      assert.equal((await fetch(base + '/api/taxonomy')).status, 401);
+      const publicTax = await (
+        await authenticatedFetch(await seedStudentSession(bank))(base + '/api/taxonomy')
+      ).json();
       assert.ok(
         !publicTax.curriculumVersions.some((version: { id: string }) => version.id === draft.id),
       );

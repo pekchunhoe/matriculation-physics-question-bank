@@ -1,0 +1,41 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #16342e;
+  background: #f4f7f5;
+  line-height: 1.6;
+}
+body {
+  margin: 0;
+  padding: 24px;
+}
+main {
+  max-width: 560px;
+  margin: 8vh auto;
+  padding: 32px;
+  background: white;
+  border: 1px solid #d2dfd8;
+  border-radius: 12px;
+}
+button {
+  font: inherit;
+  background: #17674d;
+  color: white;
+  border: 0;
+  border-radius: 6px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+}
+a {
+  color: #17674d;
+}
+[role='alert'] {
+  color: #9b2424;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #b48a21;
+  outline-offset: 4px;
+}
