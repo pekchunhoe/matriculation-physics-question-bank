@@ -15,7 +15,7 @@ export type ImageQuestionInput = {
   semesterId: string;
   chapterId: string;
   topicId: string;
-  subtopicId: string;
+  subtopicId?: string | null;
   difficultyId: string;
   totalMarks: number;
   expectedRevision?: number;
@@ -42,7 +42,7 @@ export type ImageQuestion = {
   semesterId: string;
   chapterId: string;
   topicId: string;
-  subtopicId: string;
+  subtopicId: string | null;
   difficultyId: string;
   totalMarks: number;
   questionImage: ImageAsset;
@@ -75,14 +75,14 @@ export function orderedQuestions(items: ImageQuestion[], tax: Taxonomy): ImageQu
       !s ||
       !c ||
       !t ||
-      !st ||
+      (q.subtopicId !== null && !st) ||
       s.curriculumVersionId !== q.curriculumVersionId ||
       c.parentId !== s.id ||
       t.parentId !== c.id ||
-      st.parentId !== t.id
+      (st && st.parentId !== t.id)
     )
       throw new Error('Question classification is no longer valid. Reload the selection.');
-    return [s.order, c.order, t.order, st.order];
+    return [s.order, c.order, t.order, st ? 1 : 0, st?.order ?? 0];
   };
   const orders = new Map(items.map((q) => [q.id, order(q)]));
   return [...items].sort((a, b) => {

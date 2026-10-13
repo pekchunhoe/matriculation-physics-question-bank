@@ -71,6 +71,7 @@ for (let i = 0; i < 50; i++) {
   const metadata = {
     ...fixture(),
     ...(i >= 25 ? { chapterId: c10, topicId: t10, subtopicId: s10 } : {}),
+    ...(i % 2 === 0 ? { subtopicId: null } : {}),
   };
   const q = (await service.save(undefined, metadata, pair, actor)).question;
   await service.status(q.id, { status: 'approved', expectedRevision: 1, confirmed: true }, actor);

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import type { DatabaseAdapter } from './database-adapter.js';
 
-export const currentMigration = 6;
+export const currentMigration = 7;
 
 /** Explicit administrative operation; hosted request initialization never runs it. */
 export async function applyMigrations(
@@ -40,6 +40,10 @@ export async function applyMigrations(
             'Curriculum migration cannot reconstruct every historical classification. Restore missing taxonomy records from backup before retrying. Migration rolled back.',
           );
       }
+      if (version === 7 && (await db.execute('PRAGMA foreign_key_check')).rows.length)
+        throw new Error(
+          'Optional subtopic migration failed its foreign-key check; transaction rolled back',
+        );
       await db.execute('INSERT INTO schema_migrations VALUES(?,?)', [
         version,
         new Date().toISOString(),
@@ -64,6 +68,11 @@ export async function assertCurrentSchema(db: DatabaseAdapter, expectedVersion =
     await db.execute('SELECT id,question_image,answer_image,revision FROM image_questions LIMIT 0');
     await db.execute('SELECT key,sha256,width,height FROM image_assets LIMIT 0');
     await db.execute('SELECT question_id,classification FROM image_question_versions LIMIT 0');
+  }
+  if (expectedVersion >= 7) {
+    const columns = (await db.execute('PRAGMA table_info(image_questions)')).rows;
+    if (columns.find((column) => column.name === 'subtopic_id')?.notnull !== 0)
+      throw new Error('Optional subtopic schema is not current');
   }
   // Preparing these reads also verifies the structures used by the current API.
   await db.execute(

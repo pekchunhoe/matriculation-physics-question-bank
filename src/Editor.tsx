@@ -36,7 +36,7 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
     void api<ImageQuestion>('/questions/' + id)
       .then((q) => {
         setSaved(q);
-        setMapping(q);
+        setMapping({ ...q, subtopicId: q.subtopicId ?? '' });
         setMarks(String(q.totalMarks));
       })
       .catch((e) => setError(e.message))
@@ -209,8 +209,7 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
             </div>
             {mapping.topicId && !tax.subtopics.some((s) => s.parentId === mapping.topicId) && (
               <p className="notice">
-                This topic has no subtopics. Add the authoritative subtopic in{' '}
-                <a href="/curriculum">Curriculum</a>, then return to classify this question.
+                This topic has no subtopics. You can save the question with Subtopic left blank.
               </p>
             )}
           </section>

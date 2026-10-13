@@ -2,10 +2,13 @@ import type { ImageQuestionInput } from '../shared/image-question';
 import type { Taxonomy } from '../shared/schema';
 import { Field } from './components';
 import { inStoredOrder } from './taxonomy-order';
-type Mapping = Pick<
-  ImageQuestionInput,
-  'curriculumVersionId' | 'semesterId' | 'chapterId' | 'topicId' | 'subtopicId' | 'difficultyId'
->;
+type Mapping = Omit<
+  Pick<
+    ImageQuestionInput,
+    'curriculumVersionId' | 'semesterId' | 'chapterId' | 'topicId' | 'subtopicId' | 'difficultyId'
+  >,
+  'subtopicId'
+> & { subtopicId: string };
 export const emptyMapping: Mapping = {
   curriculumVersionId: '',
   semesterId: '',
@@ -58,7 +61,7 @@ export function CurriculumFields({
     ['topicId', 'Topic', inStoredOrder(tax.topics.filter((t) => t.parentId === value.chapterId))],
     [
       'subtopicId',
-      'Subtopic',
+      admin ? 'Subtopic (Optional)' : 'Subtopic',
       inStoredOrder(tax.subtopics.filter((s) => s.parentId === value.topicId)),
     ],
     [
@@ -74,12 +77,14 @@ export function CurriculumFields({
       {choices.map(([key, label, items]) => (
         <Field label={label} key={key}>
           <select
-            required={required}
+            required={required && key !== 'subtopicId'}
             value={value[key]}
             onChange={(e) => change(key, e.target.value)}
           >
             <option value="">
-              {required ? 'Select' : 'All'} {label.toLowerCase()}
+              {admin && key === 'subtopicId'
+                ? 'None / Not specified'
+                : `${required ? 'Select' : 'All'} ${label.toLowerCase()}`}
             </option>
             {items.map((item) => (
               <option key={item.id} value={item.id}>

@@ -7,7 +7,12 @@ export const imageQuestionInput = z
     semesterId: id,
     chapterId: id,
     topicId: id,
-    subtopicId: id,
+    subtopicId: z
+      .string()
+      .max(120)
+      .nullable()
+      .optional()
+      .transform((value) => (value?.trim() ? value : null)),
     difficultyId: id,
     totalMarks: z.number().int().positive().max(10000),
     expectedRevision: z.number().int().positive().optional(),

@@ -18,7 +18,7 @@ test('Exactly two uploads and required mapping save one persistent draft; publis
     ['Semester', 'semester-1'],
     ['Chapter', chapter.id],
     ['Topic', topic.id],
-    ['Subtopic', subtopic.id],
+    ['Subtopic (Optional)', subtopic.id],
     ['Difficulty', 'medium'],
   ])
     await page.getByLabel(label, { exact: true }).selectOption(value);
@@ -47,6 +47,69 @@ test('Exactly two uploads and required mapping save one persistent draft; publis
   await page.getByRole('button', { name: 'Publish Question', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('now approved');
   await expect(page.getByLabel('Confirm replacement of the published question')).toBeVisible();
+  await page.getByRole('button', { name: 'Archive Question', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('now retired');
+});
+
+test('Optional subtopic permits paired upload, clearing, topic changes and adding later without replacing assets', async ({
+  page,
+  request,
+}) => {
+  const tax = await (await request.get('/api/taxonomy')).json();
+  const topic = tax.topics.find((t: { name: string }) => t.name === 'TEST ONLY Momentum');
+  const dynamics = tax.topics.find((t: { name: string }) => t.name === 'TEST ONLY Dynamics');
+  const subtopic = tax.subtopics.find((s: { parentId: string }) => s.parentId === topic.id);
+  await page.goto('/edit/new');
+  const optional = page.getByLabel('Subtopic (Optional)', { exact: true });
+  await expect(optional).toHaveValue('');
+  await expect(optional.locator('option:checked')).toHaveText('None / Not specified');
+  expect(await optional.getAttribute('required')).toBeNull();
+  for (const [label, value] of [
+    ['Syllabus Version', 'legacy-matriculation-physics'],
+    ['Semester', 'semester-1'],
+    ['Chapter', topic.parentId],
+    ['Topic', topic.id],
+    ['Difficulty', 'medium'],
+  ])
+    await page.getByLabel(label, { exact: true }).selectOption(value);
+  await optional.selectOption(subtopic.id);
+  await page.getByLabel('Topic', { exact: true }).selectOption(dynamics.id);
+  await expect(optional).toHaveValue('');
+  await page.getByLabel('Topic', { exact: true }).selectOption(topic.id);
+  await page.getByLabel('Total Marks').fill('6');
+  for (const role of ['Question', 'Answer']) {
+    const f = await imageFile('TEST ONLY OPTIONAL SUBTOPIC ' + role);
+    await page
+      .getByLabel(role + ' Picture', { exact: true })
+      .setInputFiles({ name: role + '.png', mimeType: f.mimetype, buffer: f.buffer });
+  }
+  await page.screenshot({
+    path: 'data/architecture-refactor/optional-subtopic-form.png',
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: 'Save Question', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Saved draft question');
+  const id = page.url().split('/').pop()!;
+  const before = await (await request.get('/api/questions/' + id)).json();
+  expect(before.subtopicId).toBeNull();
+  for (const choice of [subtopic.id, '']) {
+    await page.reload();
+    await expect(page.getByLabel('Total Marks')).toHaveValue('6');
+    await optional.selectOption(choice);
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith('/api/questions/' + id) && r.request().method() === 'PUT',
+    );
+    await page.getByRole('button', { name: 'Save Question', exact: true }).click();
+    expect((await saved).status()).toBe(200);
+    const after = await (await request.get('/api/questions/' + id)).json();
+    expect(after.id).toBe(id);
+    expect(after.subtopicId).toBe(choice || null);
+    expect(after.questionImage).toEqual(before.questionImage);
+    expect(after.answerImage).toEqual(before.answerImage);
+  }
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Publish Question', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('now approved');
   await page.getByRole('button', { name: 'Archive Question', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('now retired');
 });

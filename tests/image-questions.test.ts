@@ -125,7 +125,7 @@ test('Malformed metadata, missing pair, wrong hierarchy and academic JSON are re
     for (const input of [
       { ...e.fixture(), totalMarks: 0 },
       { ...e.fixture(), totalMarks: 1.2 },
-      { ...e.fixture(), subtopicId: '' },
+      { ...e.fixture(), subtopicId: 'missing-subtopic' },
       { ...e.fixture(), topicId: e.circular },
       { ...e.fixture(), semesterId: 'semester-2' },
       { ...e.fixture(), tags: ['provenance'] },

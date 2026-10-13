@@ -136,7 +136,16 @@ for (const count of [1, 5, 20, 50])
     const result = await request.get('/api/questions?limit=50&semester=semester-1');
     const rows = (await result.json()).items as ImageQuestion[];
     const tall = rows.find((q) => q.questionImage.height === 4000)!;
-    const selected = [tall, ...rows.filter((q) => q.id !== tall.id)].slice(0, count).reverse();
+    const assigned = rows.find((q) => q.subtopicId !== null)!;
+    const selected = [
+      tall,
+      assigned,
+      ...rows.filter((q) => q.id !== tall.id && q.id !== assigned.id),
+    ]
+      .slice(0, count)
+      .reverse();
+    expect(tall.subtopicId).toBeNull();
+    if (count > 1) expect(selected.some((q) => q.subtopicId !== null)).toBe(true);
     await page.goto('/question-set?ids=' + selected.map((q) => q.id).join(','));
     await expect(page.getByRole('button', { name: 'Download combined PDF' })).toBeEnabled();
     const violations: string[] = [];

@@ -1,5 +1,6 @@
 import { createTestBank } from '../tests/test-bank.js';
 import assert from 'node:assert/strict';
+import { currentMigration } from '../server/migrations.js';
 const bank = await createTestBank();
 assert.deepEqual(await bank.all('PRAGMA foreign_key_check'), []);
 assert.equal((await bank.one('PRAGMA integrity_check'))?.integrity_check, 'ok');
@@ -10,6 +11,9 @@ assert.equal(
     .length >= 10,
   true,
 );
-assert.equal((await bank.one('SELECT count(*) count FROM schema_migrations'))?.count, 6);
+assert.equal(
+  (await bank.one('SELECT count(*) count FROM schema_migrations'))?.count,
+  currentMigration,
+);
 await bank.close();
 console.log('Migration, relational integrity, indexes, and empty production seed: PASS');

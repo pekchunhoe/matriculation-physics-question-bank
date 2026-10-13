@@ -18,7 +18,7 @@ import { VisibilityService } from './visibility.js';
 export type ImageFile = { buffer: Buffer; originalname: string; mimetype: string };
 const joins = `FROM image_questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id
  JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
- JOIN subtopics st ON st.id=q.subtopic_id JOIN difficulty_levels d ON d.id=q.difficulty_id
+ LEFT JOIN subtopics st ON st.id=q.subtopic_id JOIN difficulty_levels d ON d.id=q.difficulty_id
  JOIN image_assets qi ON qi.key=q.question_image JOIN image_assets ai ON ai.key=q.answer_image`;
 export const publicImageQuestion = `q.status='approved' AND cv.status IN ('active','retired') AND EXISTS(
  SELECT 1 FROM image_question_versions v WHERE v.question_id=q.id AND v.revision=q.revision
@@ -49,7 +49,7 @@ function record(row: Row, answers: boolean): ImageQuestion {
     semesterId: String(row.semester_id),
     chapterId: String(row.chapter_id),
     topicId: String(row.topic_id),
-    subtopicId: String(row.subtopic_id),
+    subtopicId: row.subtopic_id === null ? null : String(row.subtopic_id),
     difficultyId: String(row.difficulty_id),
     totalMarks: Number(row.total_marks),
     questionImage: asset(row.qi_json),
@@ -75,22 +75,26 @@ export class ImageQuestionService {
     const row = await this.bank.one(
       `SELECT cv.id cv,s.id semester,c.id chapter,t.id topic,st.id subtopic,
       cv.status cv_status,s.status s_status,c.status c_status,t.status t_status,st.status st_status
-      FROM subtopics st JOIN topics t ON t.id=st.topic_id JOIN chapters c ON c.id=t.chapter_id
-      JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id WHERE st.id=?`,
-      input.subtopicId,
+      FROM topics t JOIN chapters c ON c.id=t.chapter_id
+      JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
+      LEFT JOIN subtopics st ON st.topic_id=t.id AND st.id=? WHERE t.id=?`,
+      input.subtopicId ?? null,
+      input.topicId,
     );
     if (
       !row ||
       row.cv !== input.curriculumVersionId ||
       row.semester !== input.semesterId ||
       row.chapter !== input.chapterId ||
-      row.topic !== input.topicId
+      row.topic !== input.topicId ||
+      (input.subtopicId != null && row.subtopic !== input.subtopicId)
     )
       throw new BankError(
-        'Select a complete syllabus → semester → chapter → topic → subtopic hierarchy',
+        'Select a valid syllabus → semester → chapter → topic hierarchy and an optional subtopic belonging to that topic',
       );
     const same =
-      current?.subtopicId === input.subtopicId &&
+      current &&
+      current.subtopicId === (input.subtopicId ?? null) &&
       current.curriculumVersionId === input.curriculumVersionId &&
       current.semesterId === input.semesterId &&
       current.chapterId === input.chapterId &&
@@ -141,7 +145,7 @@ export class ImageQuestionService {
     const where = ' WHERE ' + conditions.join(' AND '),
       total = Number((await this.bank.one('SELECT COUNT(*) n ' + joins + where, ...params))!.n);
     const rows = await this.bank.all(
-      `SELECT ${fields} ${joins}${where} ORDER BY cv.sort_order,s.sort_order,c.sort_order,t.sort_order,st.sort_order,q.id LIMIT ? OFFSET ?`,
+      `SELECT ${fields} ${joins}${where} ORDER BY cv.sort_order,s.sort_order,c.sort_order,t.sort_order,(q.subtopic_id IS NOT NULL),st.sort_order,q.id LIMIT ? OFFSET ?`,
       ...params,
       limit,
       (page - 1) * limit,

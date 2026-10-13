@@ -23,9 +23,15 @@
       "maxLength": 120
     },
     "subtopicId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 120
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 120
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "difficultyId": {
       "type": "string",
@@ -56,7 +62,6 @@
     "semesterId",
     "chapterId",
     "topicId",
-    "subtopicId",
     "difficultyId",
     "totalMarks"
   ],

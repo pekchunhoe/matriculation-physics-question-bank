@@ -173,7 +173,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                 <article className="question-card" key={q.id}>
                   <p className="taxonomy-path">
                     {name('chapters', q.chapterId)} / {name('topics', q.topicId)} /{' '}
-                    {name('subtopics', q.subtopicId)}
+                    {q.subtopicId ? name('subtopics', q.subtopicId) : 'Subtopic: Not specified'}
                   </p>
                   <h2>
                     {q.totalMarks} marks ?{' '}
