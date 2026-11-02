@@ -541,6 +541,48 @@ td pre {
   justify-content: center;
   margin-top: 1.5rem;
 }
+.question-pagination {
+  margin-top: 1.5rem;
+}
+.pagination-summary {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.pagination-summary span {
+  display: block;
+}
+.question-page-controls {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.page-numbers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.question-page-controls .button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem;
+}
+.question-page-controls [aria-current='page'] {
+  color: white;
+  background: var(--navy);
+  border-color: var(--navy);
+}
+.question-list-start {
+  scroll-margin-top: 1rem;
+}
+@media (max-width: 600px) {
+  .question-page-controls .page-numbers {
+    flex-basis: 100%;
+    order: -1;
+  }
+}
 .public-curriculum {
   overflow-wrap: anywhere;
 }

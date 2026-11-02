@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import {
+  Pagination,
+  useQuestionLocation,
+  useQuestionPage,
+  useQuestionListStart,
+} from './Pagination';
 type Legacy = {
   id: string;
   question_code: string;
@@ -8,17 +14,35 @@ type Legacy = {
   total_marks: number;
 };
 export function LegacyArchive() {
-  const [items, setItems] = useState<Legacy[]>([]),
+  const { query, page, setPage, replacePage } = useQuestionLocation();
+  const filters = new URLSearchParams(query);
+  filters.set('paginated', 'true');
+  const {
+    result,
+    error: requestError,
+    loading,
+  } = useQuestionPage<Legacy>('/admin/legacy-questions', filters.toString(), replacePage);
+  const listStart = useQuestionListStart(page, Boolean(result));
+  const [detailId, setDetailId] = useState(''),
     [error, setError] = useState(''),
-    [detail, setDetail] = useState(''),
-    [page, setPage] = useState(1);
+    [detail, setDetail] = useState('');
   useEffect(() => {
-    setError('');
+    setDetailId('');
+  }, [query]);
+  useEffect(() => {
+    const controller = new AbortController();
     setDetail('');
-    void api<Legacy[]>('/admin/legacy-questions?page=' + page)
-      .then(setItems)
-      .catch((e) => setError(e.message));
-  }, [page]);
+    setError('');
+    if (detailId)
+      void api('/admin/legacy-questions/' + detailId, { signal: controller.signal })
+        .then((value) => {
+          if (!controller.signal.aborted) setDetail(JSON.stringify(value, null, 2));
+        })
+        .catch((e: Error) => {
+          if (!controller.signal.aborted) setError(e.message);
+        });
+    return () => controller.abort();
+  }, [detailId]);
   return (
     <section className="panel">
       <p className="eyebrow">PRESERVED RECORDS</p>
@@ -27,13 +51,17 @@ export function LegacyArchive() {
         Original records and revision history are preserved. Supply the original question and answer
         images to create an image record under the same Question ID. Conversion saves a draft.
       </p>
-      {error && (
+      <div ref={listStart} tabIndex={-1} className="question-list-start">
+        <h2>Unconverted questions</h2>
+      </div>
+      {loading && <p role="status">Loading questions...</p>}
+      {(requestError || error) && (
         <p role="alert" className="error">
-          {error}
+          {requestError || error}
         </p>
       )}
-      {!items.length && <p>No unconverted legacy records.</p>}
-      {items.map((q) => (
+      {result?.total === 0 && <p>No unconverted legacy records.</p>}
+      {result?.items.map((q) => (
         <article className="panel" key={q.id}>
           <h2>{q.title}</h2>
           <p>
@@ -44,28 +72,12 @@ export function LegacyArchive() {
             <a className="button" href={'/edit/new?legacy=' + encodeURIComponent(q.id)}>
               Supply image pair
             </a>
-            <button
-              onClick={() =>
-                void api('/admin/legacy-questions/' + q.id)
-                  .then((v) => setDetail(JSON.stringify(v, null, 2)))
-                  .catch((e) => setError(e.message))
-              }
-            >
-              View preserved record
-            </button>
+            <button onClick={() => setDetailId(q.id)}>View preserved record</button>
           </div>
         </article>
       ))}
       {detail && <pre className="archive-data">{detail}</pre>}
-      <nav className="pagination" aria-label="Legacy archive pages">
-        <button disabled={page === 1} onClick={() => setPage(page - 1)}>
-          Previous
-        </button>
-        <span>Page {page}</span>
-        <button disabled={items.length < 100} onClick={() => setPage(page + 1)}>
-          Next
-        </button>
-      </nav>
+      {result && <Pagination info={result} onChange={setPage} label="Legacy archive pages" />}
     </section>
   );
 }

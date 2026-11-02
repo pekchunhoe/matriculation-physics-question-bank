@@ -1,4 +1,5 @@
 import type { Taxonomy } from './schema.js';
+import type { QuestionPage } from './pagination.js';
 
 export const imageLimits = {
   bytes: 1572864,
@@ -50,12 +51,7 @@ export type ImageQuestion = {
   createdAt: string;
   updatedAt: string;
 };
-export type ImageQuestionList = {
-  items: ImageQuestion[];
-  total: number;
-  page: number;
-  pages: number;
-};
+export type ImageQuestionList = QuestionPage<ImageQuestion>;
 export function orderedQuestions(items: ImageQuestion[], tax: Taxonomy): ImageQuestion[] {
   if (!items.length || items.length > imageLimits.selection)
     throw new Error('Select 1–50 questions.');

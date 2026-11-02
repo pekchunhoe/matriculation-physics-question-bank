@@ -1,71 +1,49 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
-import {
-  orderedQuestions,
-  type ImageQuestion,
-  type ImageQuestionList,
-} from '../shared/image-question';
-import { api } from './api';
+import { orderedQuestions, type ImageQuestion } from '../shared/image-question';
 import { useAuth } from './Auth';
 import { Field } from './components';
 import { CurriculumFields, emptyMapping } from './CurriculumFields';
+import {
+  Pagination,
+  useQuestionLocation,
+  useQuestionPage,
+  useQuestionListStart,
+} from './Pagination';
 export function Browser({ tax }: { tax: Taxonomy }) {
   const { session } = useAuth();
-  const initial = new URLSearchParams(location.search);
-  const [mapping, setMapping] = useState({
-      ...emptyMapping,
-      curriculumVersionId:
-        initial.get('curriculum') ??
-        tax.curriculumVersions?.find((v) => v.status === 'active')?.id ??
-        '',
-      semesterId: initial.get('semester') ?? '',
-    }),
-    [status, setStatus] = useState('approved'),
-    [search, setSearch] = useState(''),
-    [page, setPage] = useState(1),
-    [result, setResult] = useState<ImageQuestionList>(),
-    [selected, setSelected] = useState<ImageQuestion[]>([]),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(false);
-  const filters = useMemo(
-    () =>
-      new URLSearchParams(
-        Object.entries({
-          curriculum: mapping.curriculumVersionId,
-          semester: mapping.semesterId,
-          chapter: mapping.chapterId,
-          topic: mapping.topicId,
-          subtopic: mapping.subtopicId,
-          difficulty: mapping.difficultyId,
-          status,
-          q: search,
-          page: String(page),
-        }).filter(([, v]) => Boolean(v)),
-      ).toString(),
-    [mapping, status, search, page],
-  );
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    history.replaceState(null, '', '/?' + filters);
-    void api<ImageQuestionList>('/questions?' + filters, { signal: controller.signal })
-      .then(setResult)
-      .catch((e) => {
-        if (e.name !== 'AbortError') setError(e.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [filters]);
+  const defaults = new URLSearchParams({
+    curriculum: tax.curriculumVersions?.find((v) => v.status === 'active')?.id ?? '',
+    status: 'approved',
+  }).toString();
+  const { query, params, page, navigate, setPage, replacePage } = useQuestionLocation(defaults);
+  const mapping = {
+    ...emptyMapping,
+    curriculumVersionId: params.get('curriculum') ?? '',
+    semesterId: params.get('semester') ?? '',
+    chapterId: params.get('chapter') ?? '',
+    topicId: params.get('topic') ?? '',
+    subtopicId: params.get('subtopic') ?? '',
+    difficultyId: params.get('difficulty') ?? '',
+  };
+  const [selected, setSelected] = useState<ImageQuestion[]>([]),
+    [selectionError, setSelectionError] = useState('');
+  const {
+    result,
+    error: requestError,
+    loading,
+  } = useQuestionPage<ImageQuestion>('/questions', query, replacePage);
+  const listStart = useQuestionListStart(page, Boolean(result));
+  const error = requestError || selectionError;
   function select(q: ImageQuestion, checked: boolean) {
-    setError('');
+    setSelectionError('');
     try {
-      const next = checked ? [...selected, q] : selected.filter((x) => x.id !== q.id);
+      const next = checked
+        ? [...selected.filter((x) => x.id !== q.id), q]
+        : selected.filter((x) => x.id !== q.id);
       setSelected(next.length ? orderedQuestions(next, tax) : []);
     } catch (e) {
-      setError((e as Error).message);
+      setSelectionError((e as Error).message);
     }
   }
   const name = (kind: 'chapters' | 'topics' | 'subtopics', id: string) =>
@@ -96,17 +74,24 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                 next.semesterId !== mapping.semesterId
               )
                 setSelected([]);
-              setMapping(next);
-              setPage(1);
+              setSelectionError('');
+              navigate({
+                curriculum: next.curriculumVersionId,
+                semester: next.semesterId,
+                chapter: next.chapterId,
+                topic: next.topicId,
+                subtopic: next.subtopicId,
+                difficulty: next.difficultyId,
+                page: '1',
+              });
             }}
           />
           {session.user?.role === 'admin' && (
             <Field label="Status">
               <select
-                value={status}
+                value={params.get('status') ?? 'approved'}
                 onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
+                  navigate({ status: e.target.value, page: '1' });
                 }}
               >
                 {['approved', 'draft', 'reviewing', 'retired'].map((v) => (
@@ -118,11 +103,10 @@ export function Browser({ tax }: { tax: Taxonomy }) {
           <Field label="Search question ID or topic">
             <input
               type="search"
-              value={search}
+              value={params.get('q') ?? ''}
               maxLength={200}
               onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
+                navigate({ q: e.target.value, page: '1' });
               }}
             />
           </Field>
@@ -144,7 +128,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
               </a>
               <button onClick={() => setSelected([])}>Clear selection</button>
               <ol>
-                {selected.map((q) => (
+                {selected.slice(0, 3).map((q) => (
                   <li key={q.id}>
                     {name('chapters', q.chapterId)} - {q.totalMarks} marks{' '}
                     <button aria-label={'Remove ' + q.id} onClick={() => select(q, false)}>
@@ -153,22 +137,32 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                   </li>
                 ))}
               </ol>
+              {selected.length > 3 && (
+                <p>
+                  {selected.length - 3} more selected. Review the full selection in your question
+                  set.
+                </p>
+              )}
             </section>
           )}
+          <div ref={listStart} tabIndex={-1} className="question-list-start">
+            <h2>Matching questions</h2>
+          </div>
           {loading && <p role="status">Loading questions...</p>}
           {error && (
             <p role="alert" className="error">
               {error}
             </p>
           )}
-          {!loading && !result?.items.length && (
+          {!loading && !requestError && result?.total === 0 && (
             <div className="empty">
               <h2>No questions match these filters</h2>
               <p>Published image questions appear here after administrator review.</p>
             </div>
           )}
           <div className="question-grid">
-            {!error &&
+            {!loading &&
+              !requestError &&
               result?.items.map((q) => (
                 <article className="question-card" key={q.id}>
                   <p className="taxonomy-path">
@@ -216,19 +210,7 @@ export function Browser({ tax }: { tax: Taxonomy }) {
                 </article>
               ))}
           </div>
-          {result && result.pages > 1 && (
-            <nav className="pagination" aria-label="Question pages">
-              <button disabled={page === 1 || loading} onClick={() => setPage(page - 1)}>
-                Previous
-              </button>
-              <span>
-                Page {page} of {result.pages}
-              </span>
-              <button disabled={page >= result.pages || loading} onClick={() => setPage(page + 1)}>
-                Next
-              </button>
-            </nav>
-          )}
+          {result && <Pagination info={result} onChange={setPage} />}
         </section>
       </div>
     </>

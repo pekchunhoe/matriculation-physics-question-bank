@@ -11,13 +11,13 @@ test('Student browsing, dependent dropdowns, selection, removal and original asp
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Question bank', exact: true })).toBeVisible();
   await page.getByLabel('Semester', { exact: true }).selectOption('semester-1');
-  await expect(page.locator('.question-card')).toHaveCount(20);
+  await expect(page.locator('.question-card')).toHaveCount(10);
   await page.locator('.question-card input').first().check();
   await expect(page.getByRole('region', { name: 'Selected questions', exact: true })).toContainText(
     '1 selected',
   );
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByText('Page 2 of 3')).toBeVisible();
+  await expect(page.getByText('Page 2 of 5', { exact: true })).toBeVisible();
   await page.locator('.question-card input').first().check();
   await expect(page.getByRole('region', { name: 'Selected questions', exact: true })).toContainText(
     '10 total marks',
@@ -98,7 +98,7 @@ test('CSP, headers, accessible controls and narrow-screen layout', async ({ page
     ),
   );
   await page.goto('/');
-  await expect(page.locator('.question-card')).toHaveCount(20);
+  await expect(page.locator('.question-card')).toHaveCount(10);
   expect(violations).toEqual([]);
   const applicationViolations = [...violations];
   await installAxe(page);
@@ -134,8 +134,11 @@ for (const count of [1, 5, 20, 50])
     request,
   }) => {
     test.setTimeout(90000);
-    const result = await request.get('/api/questions?limit=50&semester=semester-1');
-    const rows = (await result.json()).items as ImageQuestion[];
+    const rows: ImageQuestion[] = [];
+    for (let index = 1; index <= 5; index++) {
+      const result = await request.get('/api/questions?semester=semester-1&page=' + index);
+      rows.push(...(await result.json()).items);
+    }
     const tall = rows.find((q) => q.questionImage.height === 4000)!;
     const assigned = rows.find((q) => q.subtopicId !== null)!;
     const selected = [
@@ -164,7 +167,12 @@ for (const count of [1, 5, 20, 50])
       expect(p.getWidth()).toBeCloseTo(595.28);
       expect(p.getHeight()).toBeCloseTo(841.89);
     }
-    const list = await page.locator('.set-order li').allTextContents();
+    const list: string[] = [];
+    for (let index = 1; index <= Math.ceil(count / 10); index++) {
+      if (index > 1) await page.getByRole('button', { name: 'Page ' + index, exact: true }).click();
+      list.push(...(await page.locator('.set-order li').allTextContents()));
+      expect(await page.locator('.set-order li').count()).toBeLessThanOrEqual(10);
+    }
     expect(list).toHaveLength(count);
     const chapters = list.map((v) => Number(/Chapter (\d+)/.exec(v)![1]));
     expect(chapters).toEqual([...chapters].sort((a, b) => a - b));

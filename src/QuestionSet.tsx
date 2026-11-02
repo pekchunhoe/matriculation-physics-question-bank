@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
 import { orderedQuestions, type ImageQuestion } from '../shared/image-question';
 import { api } from './api';
+import { questionPagination } from '../shared/pagination';
+import { Pagination, useQuestionLocation, useQuestionListStart } from './Pagination';
 export function QuestionSet() {
-  const [ids, setIds] = useState(new URLSearchParams(location.search).get('ids') ?? ''),
-    [items, setItems] = useState<ImageQuestion[]>([]),
+  const { params, page, navigate, setPage, replacePage } = useQuestionLocation();
+  const ids = params.get('ids') ?? '';
+  const [items, setItems] = useState<ImageQuestion[]>([]),
     [tax, setTax] = useState<Taxonomy>(),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
+    [loadedIds, setLoadedIds] = useState<string>(),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState('');
   useEffect(() => {
@@ -15,8 +19,8 @@ export function QuestionSet() {
     setLoading(true);
     setError('');
     setItems([]);
-    history.replaceState(null, '', '/question-set?ids=' + encodeURIComponent(ids));
     if (!ids) {
+      setLoadedIds(ids);
       setLoading(false);
       return;
     }
@@ -34,14 +38,24 @@ export function QuestionSet() {
         if (active) setError(e.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoadedIds(ids);
+          setLoading(false);
+        }
       });
     return () => {
       active = false;
     };
   }, [ids]);
+  const ready = !loading && loadedIds === ids,
+    pagination = questionPagination(items.length, page),
+    offset = (pagination.page - 1) * pagination.pageSize,
+    listStart = useQuestionListStart(pagination.page, ready);
+  useEffect(() => {
+    if (ready && !error && page !== pagination.page) replacePage(pagination.page);
+  }, [ready, error, page, pagination.page, replacePage]);
   async function exportPdf() {
-    if (busy || loading || !items.length || !tax) return;
+    if (busy || !ready || !items.length || !tax) return;
     setBusy(true);
     setError('');
     setNotice('Checking selected questions...');
@@ -87,58 +101,75 @@ export function QuestionSet() {
       </div>
       <section className="panel">
         <h2>
-          {items.length} questions - {items.reduce((n, q) => n + q.totalMarks, 0)} total marks
+          {ready ? items.length : 0} questions -{' '}
+          {ready ? items.reduce((n, q) => n + q.totalMarks, 0) : 0} total marks
         </h2>
         <p>A4 PDF - up to 50 questions - one syllabus and semester - 64 MiB image budget</p>
         <button
           className="button primary"
-          disabled={busy || loading || !items.length || Boolean(error)}
+          disabled={busy || !ready || !items.length || Boolean(error)}
           onClick={() => void exportPdf()}
         >
           {busy ? 'Preparing PDF...' : 'Download combined PDF'}
         </button>
         {!ids && <p>Select questions from the bank to begin.</p>}
       </section>
-      {loading && <p role="status">Loading selection...</p>}
+      {!ready && <p role="status">Loading selection...</p>}
       {notice && (
         <p role="status" className="notice">
           {notice}
         </p>
       )}
-      {error && (
+      {ready && error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
-      <ol className="set-order" aria-label="Selected questions in syllabus order">
-        {items.map((q, index) => (
-          <li className="panel" key={q.id}>
-            <strong>
-              Question {index + 1} / Answer {index + 1}
-            </strong>
-            <p>
-              {tax?.chapters.find((t) => t.id === q.chapterId)?.name} ?{' '}
-              {tax?.topics.find((t) => t.id === q.topicId)?.name} ? {q.totalMarks} marks
-            </p>
-            <code>{q.id}</code>
-            <button
-              className="button"
-              disabled={busy}
-              aria-label={'Remove Question ' + (index + 1)}
-              onClick={() =>
-                setIds(
-                  ids
-                    .split(',')
-                    .filter((v) => v !== q.id)
-                    .join(','),
-                )
-              }
-            >
-              Remove
-            </button>
-          </li>
-        ))}
+      <div ref={listStart} tabIndex={-1} className="question-list-start">
+        <h2>Selected questions in syllabus order</h2>
+      </div>
+      <ol
+        className="set-order"
+        start={offset + 1}
+        aria-label="Selected questions in syllabus order"
+      >
+        {ready &&
+          items.slice(offset, offset + pagination.pageSize).map((q, index) => (
+            <li className="panel" key={q.id}>
+              <strong>
+                Question {offset + index + 1} / Answer {offset + index + 1}
+              </strong>
+              <p>
+                {tax?.chapters.find((t) => t.id === q.chapterId)?.name} ?{' '}
+                {tax?.topics.find((t) => t.id === q.topicId)?.name} ? {q.totalMarks} marks
+              </p>
+              <code>{q.id}</code>
+              <button
+                className="button"
+                disabled={busy}
+                aria-label={'Remove Question ' + (offset + index + 1)}
+                onClick={() =>
+                  navigate({
+                    ids: ids
+                      .split(',')
+                      .filter((v) => v !== q.id)
+                      .join(','),
+                  })
+                }
+              >
+                Remove
+              </button>
+            </li>
+          ))}
       </ol>
+      {ready && items.length > 0 && (
+        <Pagination
+          info={pagination}
+          onChange={setPage}
+          label="Selected question pages"
+          disabled={busy}
+        />
+      )}
     </>
   );
 }

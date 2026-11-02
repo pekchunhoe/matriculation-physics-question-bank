@@ -2,6 +2,7 @@ import type { DatabaseAdapter, SQLInputValue } from './database-adapter.js';
 import { randomUUID } from 'node:crypto';
 import { CurriculumService } from './curriculum.js';
 import type { Taxonomy } from '../shared/schema.js';
+import { parseQuestionPage, questionPagination, questionPageSize } from '../shared/pagination.js';
 type Row = Record<string, string | number | null>;
 export class BankError extends Error {
   constructor(
@@ -155,12 +156,22 @@ export class Bank {
       throw new BankError('Invalid author');
   }
   async legacyRecords(page = 1) {
-    if (!Number.isSafeInteger(page) || page < 1 || page > 100000)
-      throw new BankError('Invalid archive page');
-    return this.all(
-      'SELECT id,question_code,title,status,total_marks,topic_id,subtopic_id FROM questions WHERE id NOT IN (SELECT id FROM image_questions) ORDER BY created_at DESC,id LIMIT 100 OFFSET ?',
-      (page - 1) * 100,
+    return (await this.legacyQuestionPage(page)).items;
+  }
+  async legacyQuestionPage(value: unknown = 1) {
+    const requested = parseQuestionPage(value);
+    if (requested === undefined) throw new BankError('Invalid archive page');
+    const where = 'FROM questions WHERE id NOT IN (SELECT id FROM image_questions)',
+      total = Number((await this.one('SELECT COUNT(*) n ' + where))!.n),
+      pagination = questionPagination(total, requested);
+    const items = await this.all(
+      'SELECT id,question_code,title,status,total_marks,topic_id,subtopic_id ' +
+        where +
+        ' ORDER BY created_at DESC,id LIMIT ? OFFSET ?',
+      questionPageSize,
+      (pagination.page - 1) * questionPageSize,
     );
+    return { items, ...pagination };
   }
   async legacyRecord(id: string) {
     const row = await this.one('SELECT * FROM questions WHERE id=?', id);

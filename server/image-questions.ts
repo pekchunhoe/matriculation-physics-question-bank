@@ -14,6 +14,7 @@ import type { Row, SQLInputValue } from './database-adapter.js';
 import { AssetStorageError, type AssetStorage, type StoredUpload } from './asset-storage.js';
 import { validateImage, validateUpload } from './asset-validation.js';
 import { VisibilityService } from './visibility.js';
+import { parseQuestionPage, questionPagination, questionPageSize } from '../shared/pagination.js';
 
 export type ImageFile = { buffer: Buffer; originalname: string; mimetype: string };
 const joins = `FROM image_questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id
@@ -138,23 +139,25 @@ export class ImageQuestionService {
       const q = '%' + filters.q.slice(0, 200) + '%';
       params.push(q, q, q, q);
     }
-    const page = Math.max(1, Math.min(100000, Number(filters.page) || 1)),
-      limit = Math.min(50, Math.max(1, Number(filters.limit) || 20));
-    if (!Number.isInteger(page) || !Number.isInteger(limit))
+    const requested = parseQuestionPage(filters.page),
+      requestedLimit =
+        filters.limit === undefined ? questionPageSize : parseQuestionPage(filters.limit);
+    if (requested === undefined || requestedLimit === undefined)
       throw new BankError('Invalid pagination');
+    // Older callers may request a smaller limit; no listing can request more than ten.
+    const limit = Math.min(questionPageSize, requestedLimit);
     const where = ' WHERE ' + conditions.join(' AND '),
       total = Number((await this.bank.one('SELECT COUNT(*) n ' + joins + where, ...params))!.n);
+    const pagination = questionPagination(total, requested, limit);
     const rows = await this.bank.all(
       `SELECT ${fields} ${joins}${where} ORDER BY cv.sort_order,s.sort_order,c.sort_order,t.sort_order,(q.subtopic_id IS NOT NULL),st.sort_order,q.id LIMIT ? OFFSET ?`,
       ...params,
       limit,
-      (page - 1) * limit,
+      (pagination.page - 1) * limit,
     );
     return {
       items: rows.map((row) => record(row, false)),
-      total,
-      page,
-      pages: Math.ceil(total / limit),
+      ...pagination,
     };
   }
   private async snapshot(id: string, actor: string) {

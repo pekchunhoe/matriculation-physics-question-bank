@@ -17,6 +17,7 @@ import { seedAdminSession, testEmail } from '../tests/auth-fixture.js';
 import { imageFile } from '../tests/image-fixture.js';
 import { ImageQuestionService } from '../server/image-questions.js';
 import { validAssetKey } from '../shared/asset-reference.js';
+import { seedQuestionCopies, seedLegacyQuestions } from '../tests/pagination-fixture.js';
 // A fixed, explicitly owned test directory bounds growth even if Windows force-kills the server.
 const workspace = resolve(import.meta.dirname, '..'),
   uploads = resolve(workspace, 'data/test-runtime/browser-uploads');
@@ -44,7 +45,7 @@ if (existsSync(uploads)) {
   mkdirSync(uploads, { recursive: true });
   writeFileSync(marker, markerText);
 }
-const { bank, fixture, c1 } = await setup(),
+const { bank, fixture, c1, momentum } = await setup(),
   app = createApp(bank, new LocalAssetStorage(uploads));
 await seedAdminSession(bank);
 await seedStudentSession(bank);
@@ -78,6 +79,9 @@ for (let i = 0; i < 50; i++) {
   const q = (await service.save(undefined, metadata, pair, actor)).question;
   await service.status(q.id, { status: 'approved', expectedRevision: 1, confirmed: true }, actor);
 }
+const draft = (await service.save(undefined, fixture(), normal, actor)).question;
+await seedQuestionCopies(bank, draft.id, 0, 11);
+await seedLegacyQuestions(bank, momentum, 21);
 app.get('/verify-email', (_req, res) => res.sendFile(resolve('dist/verify-email.html')));
 app.use(express.static(resolve('dist')));
 app.get('/{*path}', (_req, res) => res.sendFile(resolve('dist/index.html')));

@@ -306,7 +306,8 @@ export function createApp(
   app.get('/api/questions', async (req, res) => {
     const filters: Filters = {};
     for (const [key, value] of Object.entries(req.query)) {
-      if (typeof value !== 'string') throw new BankError('Query parameters must be single strings');
+      if (typeof value !== 'string' || /^(page|limit)\[/.test(key))
+        throw new BankError('Query parameters must be single strings');
       filters[key] = value;
     }
     res.json(await questions.list(filters, identities.has(req)));
@@ -372,9 +373,13 @@ export function createApp(
       409,
     );
   });
-  app.get('/api/admin/legacy-questions', admin, async (req, res) =>
-    res.json(await bank.legacyRecords(req.query.page === undefined ? 1 : Number(req.query.page))),
-  );
+  app.get('/api/admin/legacy-questions', admin, async (req, res) => {
+    if (Object.keys(req.query).some((key) => /^page\[/.test(key)))
+      throw new BankError('Invalid archive page');
+    const result = await bank.legacyQuestionPage(req.query.page);
+    // Preserve the array response for older callers; the UI requests count metadata.
+    res.json(req.query.paginated === 'true' ? result : result.items);
+  });
   app.get('/api/admin/legacy-questions/:id', admin, async (req, res) =>
     res.json(await bank.legacyRecord(String(req.params.id))),
   );
