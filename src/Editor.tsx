@@ -26,7 +26,8 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [confirmed, setConfirmed] = useState(false);
+    [confirmed, setConfirmed] = useState(false),
+    [replaceRetiredMapping, setReplaceRetiredMapping] = useState(false);
   const [loading, setLoading] = useState(Boolean(id && id !== 'new'));
   const legacy = new URLSearchParams(location.search).get('legacy');
   const qPreview = usePreview(question, saved?.questionImage.url),
@@ -86,6 +87,7 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
         { method: saved ? 'PUT' : 'POST', body },
       );
       setSaved(result.question);
+      setReplaceRetiredMapping(false);
       setQuestion(undefined);
       setAnswer(undefined);
       setConfirmed(false);
@@ -128,7 +130,47 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
       setBusy(false);
     }
   }
+  async function unassign() {
+    if (
+      !saved ||
+      busy ||
+      !window.confirm(
+        'Move this question to Unassigned Questions? Its images, metadata and publication status will be preserved. Students can access it again after reassignment if it is published.',
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(
+        '/admin/unassigned/' + encodeURIComponent(saved.id),
+        json('PATCH', {
+          expectedRevision: saved.revision,
+          confirmed: true,
+          mapping: null,
+        }),
+      );
+      location.assign('/admin/unassigned');
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
   if (loading) return <p role="status">Loading question...</p>;
+  if (saved?.unassigned)
+    return (
+      <section className="panel">
+        <h1>Unassigned question</h1>
+        <p>
+          <code>{saved.id}</code>
+        </p>
+        <a className="button" href="/admin/unassigned">
+          Reassign in Unassigned Questions
+        </a>
+      </section>
+    );
+  const retiredMapping = saved?.retiredClassification;
+  const keepingRetiredMapping = Boolean(retiredMapping && !replaceRetiredMapping);
   return (
     <>
       <div className="page-heading">
@@ -193,8 +235,40 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
           </section>
           <section className="panel">
             <h2>B. Academic mapping</h2>
+            {retiredMapping && saved && (
+              <div className="notice">
+                <p>Current assignment includes retired curriculum records.</p>
+                <p>
+                  {[retiredMapping.chapter, retiredMapping.topic, retiredMapping.subtopic]
+                    .filter(Boolean)
+                    .join(' / ')}
+                </p>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    setReplaceRetiredMapping(!replaceRetiredMapping);
+                    setMapping({
+                      ...(replaceRetiredMapping
+                        ? { ...saved, subtopicId: saved.subtopicId ?? '' }
+                        : emptyMapping),
+                      difficultyId: mapping.difficultyId,
+                    });
+                  }}
+                >
+                  {keepingRetiredMapping ? 'Change assignment' : 'Keep current assignment'}
+                </button>
+              </div>
+            )}
             <div className="form-grid">
-              <CurriculumFields tax={tax} value={mapping} onChange={setMapping} required admin />
+              <CurriculumFields
+                tax={tax}
+                value={mapping}
+                onChange={setMapping}
+                required
+                admin
+                showClassification={!keepingRetiredMapping}
+              />
               <Field label="Total Marks">
                 <input
                   type="number"
@@ -207,11 +281,13 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
                 />
               </Field>
             </div>
-            {mapping.topicId && !tax.subtopics.some((s) => s.parentId === mapping.topicId) && (
-              <p className="notice">
-                This topic has no subtopics. You can save the question with Subtopic left blank.
-              </p>
-            )}
+            {!keepingRetiredMapping &&
+              mapping.topicId &&
+              !tax.subtopics.some((s) => s.parentId === mapping.topicId) && (
+                <p className="notice">
+                  This topic has no subtopics. You can save the question with Subtopic left blank.
+                </p>
+              )}
           </section>
           <section className="panel">
             <h2>C. Save</h2>
@@ -263,6 +339,14 @@ export function Editor({ tax, id }: { tax: Taxonomy; id?: string }) {
             <a className="button" href={'/questions/' + saved.id}>
               Preview saved question
             </a>
+            <button
+              type="button"
+              disabled={busy}
+              className="button"
+              onClick={() => void unassign()}
+            >
+              Move to Unassigned Questions
+            </button>
           </div>
           <p>
             Archiving preserves both images and revision history. Permanent deletion is disabled.

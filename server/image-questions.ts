@@ -1,4 +1,4 @@
-import { imageQuestionInput } from './image-question-input.js';
+import { assignmentChangeInput, imageQuestionInput } from './image-question-input.js';
 import { randomUUID } from 'node:crypto';
 import {
   imageLimits,
@@ -15,18 +15,45 @@ import { AssetStorageError, type AssetStorage, type StoredUpload } from './asset
 import { validateImage, validateUpload } from './asset-validation.js';
 import { VisibilityService } from './visibility.js';
 import { parseQuestionPage, questionPagination, questionPageSize } from '../shared/pagination.js';
+import {
+  isUnassignedId,
+  unassignedId,
+  unassignedName,
+  unassignedSlug,
+  unassignedTopicSql,
+} from './unassigned.js';
 
 export type ImageFile = { buffer: Buffer; originalname: string; mimetype: string };
+type QuestionMapping = Pick<
+  ImageQuestionInput,
+  'curriculumVersionId' | 'semesterId' | 'chapterId' | 'topicId' | 'subtopicId'
+>;
 const joins = `FROM image_questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id
  JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id
  LEFT JOIN subtopics st ON st.id=q.subtopic_id JOIN difficulty_levels d ON d.id=q.difficulty_id
  JOIN image_assets qi ON qi.key=q.question_image JOIN image_assets ai ON ai.key=q.answer_image`;
-export const publicImageQuestion = `q.status='approved' AND cv.status IN ('active','retired') AND EXISTS(
+const approvedImageRevision = `EXISTS(
  SELECT 1 FROM image_question_versions v WHERE v.question_id=q.id AND v.revision=q.revision
  AND v.question_image=q.question_image AND v.answer_image=q.answer_image AND json_extract(v.snapshot,'$.status')='approved')`;
+export const assignedImageQuestion = `NOT (${unassignedTopicSql})`;
+export const publicImageQuestion = `${assignedImageQuestion} AND q.status='approved' AND cv.status IN ('active','retired') AND ${approvedImageRevision}`;
+const activeSemesterSql = "s.status='active'";
+const activeChapterSql = `${activeSemesterSql} AND c.status='active'`;
+export const activeTopicSql = `${activeChapterSql} AND t.status='active'`;
+const activeClassificationSql = `${activeTopicSql} AND (st.id IS NULL OR st.status='active')`;
+const activeAcademicFilters: Record<string, string> = {
+  semester: activeSemesterSql,
+  chapter: activeChapterSql,
+  topic: activeTopicSql,
+  subtopic: activeClassificationSql,
+};
 const assetJson = (alias: string) =>
   `json_object('key',${alias}.key,'mime',${alias}.mime,'size',${alias}.size,'sha256',${alias}.sha256,'width',${alias}.width,'height',${alias}.height,'thumbnailKey',${alias}.thumbnail_key)`;
-const fields = `q.*,c.id chapter_id,s.id semester_id,cv.id curriculum_version_id,${assetJson('qi')} qi_json,${assetJson('ai')} ai_json`;
+const fields = `q.*,c.id chapter_id,s.id semester_id,cv.id curriculum_version_id,
+ s.name semester_name,c.name chapter_name,t.name topic_name,st.name subtopic_name,
+ s.sort_order semester_order,c.sort_order chapter_order,t.sort_order topic_order,st.sort_order subtopic_order,
+ NOT (${activeClassificationSql}) retired_classification,
+ ${assetJson('qi')} qi_json,${assetJson('ai')} ai_json`;
 function asset(value: unknown): ImageAsset {
   const a = JSON.parse(String(value));
   return {
@@ -41,6 +68,7 @@ function asset(value: unknown): ImageAsset {
   };
 }
 function record(row: Row, answers: boolean): ImageQuestion {
+  const unassigned = isUnassignedId(String(row.topic_id));
   return {
     id: String(row.id),
     legacyId: row.legacy_id as string | null,
@@ -57,6 +85,23 @@ function record(row: Row, answers: boolean): ImageQuestion {
     ...(answers ? { answerImage: asset(row.ai_json) } : {}),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    ...(unassigned ? { unassigned: true as const } : {}),
+    ...(!unassigned && row.retired_classification
+      ? {
+          retiredClassification: {
+            chapter: String(row.chapter_name),
+            topic: String(row.topic_name),
+            subtopic: row.subtopic_name as string | null,
+            order: [
+              Number(row.semester_order),
+              Number(row.chapter_order),
+              Number(row.topic_order),
+              Number(row.subtopic_id !== null),
+              Number(row.subtopic_order),
+            ],
+          },
+        }
+      : {}),
   };
 }
 export class ImageQuestionService {
@@ -72,7 +117,9 @@ export class ImageQuestionService {
     if (!row) throw new BankError('Question not found', 404);
     return record(row, admin || answers);
   }
-  async mapping(input: ImageQuestionInput, current?: ImageQuestion) {
+  private async mapping(input: QuestionMapping, current?: ImageQuestion) {
+    if (isUnassignedId(input.chapterId) || isUnassignedId(input.topicId))
+      throw new BankError('Choose a topic outside Unassigned Questions');
     const row = await this.bank.one(
       `SELECT cv.id cv,s.id semester,c.id chapter,t.id topic,st.id subtopic,
       cv.status cv_status,s.status s_status,c.status c_status,t.status t_status,st.status st_status
@@ -105,16 +152,21 @@ export class ImageQuestionService {
       [row.cv_status, row.s_status, row.c_status, row.t_status, row.st_status].includes('retired')
     )
       throw new BankError('Choose active curriculum records for a new classification');
+  }
+  private async validateDifficulty(difficultyId: string) {
     if (
       !(await this.bank.one(
         "SELECT id FROM difficulty_levels WHERE id=? AND slug IN ('easy','medium','hard')",
-        input.difficultyId,
+        difficultyId,
       ))
     )
       throw new BankError('Select EASY, MEDIUM or HARD');
   }
-  async list(filters: Filters = {}, admin = false) {
-    const conditions: string[] = admin ? ['1=1'] : [publicImageQuestion],
+  async list(filters: Filters = {}, admin = false, unassigned = false) {
+    if (unassigned && !admin) throw new BankError('Administrator access required', 403);
+    const conditions = [
+        unassigned ? unassignedTopicSql : admin ? assignedImageQuestion : publicImageQuestion,
+      ],
       params: SQLInputValue[] = [];
     const exact: Record<string, string> = {
       curriculum: 'cv.id',
@@ -131,13 +183,22 @@ export class ImageQuestionService {
           conditions.push("cv.status='active'");
         else {
           conditions.push(`${column}=?`);
+          if (!unassigned && activeAcademicFilters[key])
+            conditions.push(activeAcademicFilters[key]);
           params.push(filters[key]!);
         }
       }
     if (filters.q) {
-      conditions.push('(q.id LIKE ? OR c.name LIKE ? OR t.name LIKE ? OR st.name LIKE ?)');
       const q = '%' + filters.q.slice(0, 200) + '%';
-      params.push(q, q, q, q);
+      if (unassigned) {
+        conditions.push(
+          '(q.id LIKE ? OR EXISTS(SELECT 1 FROM questions legacy WHERE legacy.id=q.legacy_id AND legacy.question_code LIKE ?))',
+        );
+        params.push(q, q);
+      } else {
+        conditions.push('(q.id LIKE ? OR c.name LIKE ? OR t.name LIKE ? OR st.name LIKE ?)');
+        params.push(q, q, q, q);
+      }
     }
     const requested = parseQuestionPage(filters.page),
       requestedLimit =
@@ -149,18 +210,32 @@ export class ImageQuestionService {
     const where = ' WHERE ' + conditions.join(' AND '),
       total = Number((await this.bank.one('SELECT COUNT(*) n ' + joins + where, ...params))!.n);
     const pagination = questionPagination(total, requested, limit);
+    const source = unassigned
+      ? `,(SELECT question_code FROM questions WHERE id=q.legacy_id) legacy_question_code,
+        (SELECT source_pdf_url FROM revision_candidates WHERE question_id=q.legacy_id
+          AND status='approved' AND source_pdf_url IS NOT NULL ORDER BY created_at DESC,id LIMIT 1) legacy_source_pdf`
+      : '';
     const rows = await this.bank.all(
-      `SELECT ${fields} ${joins}${where} ORDER BY cv.sort_order,s.sort_order,c.sort_order,t.sort_order,(q.subtopic_id IS NOT NULL),st.sort_order,q.id LIMIT ? OFFSET ?`,
+      `SELECT ${fields}${source} ${joins}${where} ORDER BY cv.sort_order,s.sort_order,c.sort_order,t.sort_order,(q.subtopic_id IS NOT NULL),st.sort_order,q.id LIMIT ? OFFSET ?`,
       ...params,
       limit,
       (pagination.page - 1) * limit,
     );
     return {
-      items: rows.map((row) => record(row, false)),
+      items: rows.map((row) => ({
+        ...record(row, unassigned),
+        ...(unassigned
+          ? {
+              semesterName: String(row.semester_name),
+              legacyQuestionCode: row.legacy_question_code as string | null,
+              legacySourcePdf: row.legacy_source_pdf as string | null,
+            }
+          : {}),
+      })),
       ...pagination,
     };
   }
-  private async snapshot(id: string, actor: string) {
+  private async snapshot(id: string, actor: string, recordedAt?: string) {
     const q = await this.get(id, true),
       classification = await this.bank.curriculum.classification({
         question: { topicId: q.topicId, subtopicId: q.subtopicId },
@@ -174,9 +249,92 @@ export class ImageQuestionService {
       JSON.stringify(q),
       JSON.stringify(classification),
       actor,
-      q.updatedAt,
+      recordedAt ?? q.updatedAt,
     );
     return q;
+  }
+  private async holdingTopic(semesterId: string) {
+    const chapterId = unassignedId('chapter', semesterId),
+      topicId = unassignedId('topic', semesterId);
+    await this.bank.run(
+      "INSERT INTO chapters(id,semester_id,name,slug,status) VALUES(?,?,?,?,'retired') ON CONFLICT DO NOTHING",
+      chapterId,
+      semesterId,
+      unassignedName,
+      unassignedSlug,
+    );
+    await this.bank.run(
+      "INSERT INTO topics(id,chapter_id,name,slug,status) SELECT ?,id,?,?,'retired' FROM chapters WHERE id=? ON CONFLICT DO NOTHING",
+      topicId,
+      unassignedName,
+      unassignedSlug,
+      chapterId,
+    );
+    if (
+      !(await this.bank.one(
+        'SELECT 1 FROM topics t JOIN chapters c ON c.id=t.chapter_id WHERE t.id=? AND c.id=? AND c.semester_id=? AND t.slug=? AND c.slug=?',
+        topicId,
+        chapterId,
+        semesterId,
+        unassignedSlug,
+        unassignedSlug,
+      ))
+    )
+      throw new BankError(
+        'The reserved holding area conflicts with an existing curriculum record',
+        409,
+      );
+    return topicId;
+  }
+  async changeAssignment(id: string, raw: unknown, actor: string) {
+    const parsed = assignmentChangeInput.safeParse(raw);
+    if (!parsed.success)
+      throw new BankError('Confirm the assignment change and select a valid destination');
+    const { expectedRevision, mapping } = parsed.data;
+    return this.bank.transaction(async () => {
+      const current = await this.get(id, true);
+      if (current.revision !== expectedRevision)
+        throw new BankError('Question changed. Reload before changing its assignment.', 409);
+      if (Boolean(current.unassigned) !== Boolean(mapping))
+        throw new BankError('The question is already in the requested assignment state', 409);
+      if (mapping) await this.mapping(mapping);
+      const topicId = mapping?.topicId ?? (await this.holdingTopic(current.semesterId));
+      return this.writeAssignment(current, topicId, mapping?.subtopicId ?? null, actor);
+    });
+  }
+  // The curriculum edit owns the transaction and checks legacy and pending references first.
+  async transferTopicQuestions(topicId: string, actor: string) {
+    const assigned = await this.bank.all(
+      'SELECT id FROM image_questions WHERE topic_id=?',
+      topicId,
+    );
+    if (!assigned.length) return;
+    const first = await this.get(String(assigned[0].id), true);
+    const holding = await this.holdingTopic(first.semesterId);
+    for (const { id } of assigned)
+      await this.writeAssignment(await this.get(String(id), true), holding, null, actor);
+  }
+  private async writeAssignment(
+    current: ImageQuestion,
+    topicId: string,
+    subtopicId: string | null,
+    actor: string,
+  ) {
+    if (
+      current.status === 'approved' &&
+      !(await this.bank.one(
+        `SELECT 1 FROM image_questions q WHERE q.id=? AND ${approvedImageRevision}`,
+        current.id,
+      ))
+    )
+      throw new BankError(`Question ${current.id} has no matching approval history`, 409);
+    await this.bank.run(
+      'UPDATE image_questions SET topic_id=?,subtopic_id=?,revision=revision+1 WHERE id=?',
+      topicId,
+      subtopicId,
+      current.id,
+    );
+    return this.snapshot(current.id, actor, new Date().toISOString());
   }
   private async cleanup(uploads: StoredUpload[]) {
     for (const upload of uploads) {
@@ -207,6 +365,8 @@ export class ImageQuestionService {
       );
     const input = parsed.data,
       current = id ? await this.get(id, true) : undefined;
+    if (current?.unassigned)
+      throw new BankError('Reassign this question in Unassigned Questions before editing it', 409);
     if (current && input.expectedRevision !== current.revision)
       throw new BankError('Question changed. Reload before saving.', 409);
     if (!current && input.expectedRevision !== undefined)
@@ -228,6 +388,7 @@ export class ImageQuestionService {
         throw new BankError('Legacy record is already converted', 409);
     }
     await this.mapping(input, current);
+    await this.validateDifficulty(input.difficultyId);
     // Validate both complete files before any upload.
     const q = files.question
       ? await validateImage(
@@ -272,6 +433,7 @@ export class ImageQuestionService {
         if (current && (await this.get(current.id, true)).revision !== input.expectedRevision)
           throw new BankError('Question changed. Reload before saving.', 409);
         await this.mapping(input, current);
+        await this.validateDifficulty(input.difficultyId);
         const duplicateImages: string[] = [];
         for (const p of pending) {
           if (

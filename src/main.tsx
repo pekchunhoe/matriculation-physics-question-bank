@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Taxonomy } from '../shared/schema';
 import { api } from './api';
@@ -15,19 +15,46 @@ const LegacyArchive = lazy(() =>
 );
 const QuestionSet = lazy(() => import('./QuestionSet').then((m) => ({ default: m.QuestionSet })));
 const Students = lazy(() => import('./Students').then((m) => ({ default: m.Students })));
+const UnassignedQuestions = lazy(() =>
+  import('./UnassignedQuestions').then((m) => ({ default: m.UnassignedQuestions })),
+);
 function App() {
   const { session, loading } = useAuth();
   const admin = session.user?.role === 'admin';
   const [tax, setTax] = useState<Taxonomy | null>(null),
     [error, setError] = useState('');
-  const load = () =>
-    api<Taxonomy>('/taxonomy')
-      .then(setTax)
-      .catch((e) => setError(e.message));
+  const request = useRef<AbortController | null>(null);
+  const load = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const next = await api<Taxonomy>('/taxonomy', { signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setTax((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+        setError('');
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) setError((e as Error).message);
+    }
+  }, []);
   useEffect(() => {
-    if (session.authenticated) void load();
-    else setTax(null);
-  }, [admin, session.authenticated]);
+    if (!session.authenticated) {
+      setTax(null);
+      return;
+    }
+    void load();
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) void load();
+    };
+    window.addEventListener('focus', load);
+    window.addEventListener('pageshow', restore);
+    return () => {
+      request.current?.abort();
+      window.removeEventListener('focus', load);
+      window.removeEventListener('pageshow', restore);
+    };
+  }, [admin, session.authenticated, load]);
   const path = location.pathname.split('/').filter(Boolean),
     current = path[0] ?? 'bank';
   return (
@@ -51,6 +78,14 @@ function App() {
               Add question
             </a>
           )}
+          {admin && (
+            <a
+              href="/admin/unassigned"
+              aria-current={path[1] === 'unassigned' && current === 'admin' ? 'page' : undefined}
+            >
+              Unassigned Questions
+            </a>
+          )}
           {admin && <a href="/admin/students">Student access</a>}
           {session.authenticated ? <Logout /> : <a href="/admin/login">Admin login</a>}
         </nav>
@@ -72,6 +107,8 @@ function App() {
             <Students />
           ) : !tax ? (
             <p role="status">Loading...</p>
+          ) : current === 'admin' && path[1] === 'unassigned' ? (
+            <UnassignedQuestions tax={tax} />
           ) : (['edit', 'import'].includes(current) ||
               (current === 'admin' && path[1] === 'legacy')) &&
             !admin ? (

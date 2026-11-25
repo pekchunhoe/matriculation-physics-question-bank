@@ -140,8 +140,12 @@ export function QuestionSet() {
                 Question {offset + index + 1} / Answer {offset + index + 1}
               </strong>
               <p>
-                {tax?.chapters.find((t) => t.id === q.chapterId)?.name} ?{' '}
-                {tax?.topics.find((t) => t.id === q.topicId)?.name} ? {q.totalMarks} marks
+                {q.retiredClassification?.chapter ??
+                  tax?.chapters.find((t) => t.id === q.chapterId)?.name}{' '}
+                ?{' '}
+                {q.retiredClassification?.topic ??
+                  tax?.topics.find((t) => t.id === q.topicId)?.name}{' '}
+                ? {q.totalMarks} marks
               </p>
               <code>{q.id}</code>
               <button

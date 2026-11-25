@@ -23,12 +23,16 @@ export function CurriculumFields({
   onChange,
   required = false,
   admin = false,
+  showClassification = true,
+  showDifficulty = true,
 }: {
   tax: Taxonomy;
   value: Mapping;
   onChange: (value: Mapping) => void;
   required?: boolean;
   admin?: boolean;
+  showClassification?: boolean;
+  showDifficulty?: boolean;
 }) {
   const keys = ['curriculumVersionId', 'semesterId', 'chapterId', 'topicId', 'subtopicId'] as const;
   const change = (key: keyof Mapping, id: string) => {
@@ -74,26 +78,28 @@ export function CurriculumFields({
   ];
   return (
     <>
-      {choices.map(([key, label, items]) => (
-        <Field label={label} key={key}>
-          <select
-            required={required && key !== 'subtopicId'}
-            value={value[key]}
-            onChange={(e) => change(key, e.target.value)}
-          >
-            <option value="">
-              {admin && key === 'subtopicId'
-                ? 'None / Not specified'
-                : `${required ? 'Select' : 'All'} ${label.toLowerCase()}`}
-            </option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
+      {choices
+        .filter(([key]) => (key === 'difficultyId' ? showDifficulty : showClassification))
+        .map(([key, label, items]) => (
+          <Field label={label} key={key}>
+            <select
+              required={required && key !== 'subtopicId'}
+              value={value[key]}
+              onChange={(e) => change(key, e.target.value)}
+            >
+              <option value="">
+                {admin && key === 'subtopicId'
+                  ? 'None / Not specified'
+                  : `${required ? 'Select' : 'All'} ${label.toLowerCase()}`}
               </option>
-            ))}
-          </select>
-        </Field>
-      ))}
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ))}
     </>
   );
 }

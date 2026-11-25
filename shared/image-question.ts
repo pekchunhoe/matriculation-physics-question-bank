@@ -50,8 +50,20 @@ export type ImageQuestion = {
   answerImage?: ImageAsset;
   createdAt: string;
   updatedAt: string;
+  unassigned?: true;
+  retiredClassification?: {
+    chapter: string;
+    topic: string;
+    subtopic: string | null;
+    order: [number, number, number, number, number];
+  };
 };
 export type ImageQuestionList = QuestionPage<ImageQuestion>;
+export type UnassignedQuestion = ImageQuestion & {
+  semesterName: string;
+  legacyQuestionCode: string | null;
+  legacySourcePdf: string | null;
+};
 export function orderedQuestions(items: ImageQuestion[], tax: Taxonomy): ImageQuestion[] {
   if (!items.length || items.length > imageLimits.selection)
     throw new Error('Select 1–50 questions.');
@@ -63,6 +75,7 @@ export function orderedQuestions(items: ImageQuestion[], tax: Taxonomy): ImageQu
   )
     throw new Error('Choose questions from one syllabus version and one semester.');
   const order = (q: ImageQuestion) => {
+    if (q.retiredClassification) return q.retiredClassification.order;
     const s = tax.semesters.find((t) => t.id === q.semesterId),
       c = tax.chapters.find((t) => t.id === q.chapterId),
       t = tax.topics.find((t) => t.id === q.topicId),

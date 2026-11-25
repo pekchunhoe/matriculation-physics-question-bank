@@ -66,6 +66,7 @@ export const taxonomyEditSchema = z
     expectedRevision: z.number().int().positive(),
     impactToken: id,
     confirmImpact: z.boolean(),
+    transferQuestions: z.literal(true).optional(),
     note: z.string().min(1).max(2000),
     author: z.string().max(200).optional(),
   })
@@ -102,6 +103,7 @@ export type CurriculumImpact = {
   id: string;
   kind: EditableKind | 'curriculumVersions';
   currentQuestions: number;
+  legacyQuestions: number;
   historicalQuestions: number;
   pendingRevisions: number;
   descendants: number;

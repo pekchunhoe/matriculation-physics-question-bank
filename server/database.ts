@@ -1,6 +1,12 @@
 import type { DatabaseAdapter, SQLInputValue } from './database-adapter.js';
 import { randomUUID } from 'node:crypto';
 import { CurriculumService } from './curriculum.js';
+import {
+  isReservedCurriculumName,
+  isUnassignedId,
+  unassignedName,
+  unassignedSlug,
+} from './unassigned.js';
 import type { Taxonomy } from '../shared/schema.js';
 import { parseQuestionPage, questionPagination, questionPageSize } from '../shared/pagination.js';
 type Row = Record<string, string | number | null>;
@@ -51,18 +57,20 @@ export class Bank {
       );
       entries.push([
         key,
-        rows.map((r) => ({
-          id: String(r.id),
-          name: String(r.name),
-          slug: String(r.slug),
-          parentId: parent ? String(r[parent]) : null,
-          order: Number(r.sort_order),
-          isTest: Boolean(r.is_test),
-          ...(r.status ? { status: String(r.status), revision: Number(r.revision) } : {}),
-          ...(r.curriculum_version_id
-            ? { curriculumVersionId: String(r.curriculum_version_id) }
-            : {}),
-        })),
+        rows
+          .filter((r) => (key !== 'chapters' && key !== 'topics') || !isUnassignedId(String(r.id)))
+          .map((r) => ({
+            id: String(r.id),
+            name: String(r.name),
+            slug: String(r.slug),
+            parentId: parent ? String(r[parent]) : null,
+            order: Number(r.sort_order),
+            isTest: Boolean(r.is_test),
+            ...(r.status ? { status: String(r.status), revision: Number(r.revision) } : {}),
+            ...(r.curriculum_version_id
+              ? { curriculumVersionId: String(r.curriculum_version_id) }
+              : {}),
+          })),
       ]);
     }
     return {
@@ -81,6 +89,11 @@ export class Bank {
       throw new BankError('Use the permanent semester names Semester 1 or Semester 2');
     const slug = slugify(name);
     if (!slug || name.length > 200) throw new BankError('Enter a valid taxonomy name');
+    if (
+      (kind === 'chapters' || kind === 'topics') &&
+      (isReservedCurriculumName(name) || slug === unassignedSlug)
+    )
+      throw new BankError(`${unassignedName} is reserved for the holding area`, 409);
     const table = sqlTable(kind),
       parent = taxonomyTables[kind];
     if (parent && !parentId) throw new BankError('Select the parent taxonomy record');

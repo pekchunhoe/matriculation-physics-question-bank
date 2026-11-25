@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
 import { api, json } from './api';
 import { Field } from './components';
@@ -12,7 +12,31 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
     [isTest, setIsTest] = useState(false),
     [error, setError] = useState(''),
     [message, setMessage] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [showRetired, setShowRetired] = useState(false),
+    [retiredTax, setRetiredTax] = useState<Taxonomy>(),
+    [retiredError, setRetiredError] = useState(''),
+    [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    if (!showRetired) return;
+    const controller = new AbortController();
+    void api<Taxonomy>('/taxonomy?includeRetired=true', { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setRetiredTax(result);
+          setRetiredError('');
+        }
+      })
+      .catch((e: Error) => {
+        if (!controller.signal.aborted) setRetiredError(e.message);
+      });
+    return () => controller.abort();
+  }, [showRetired, refresh, tax]);
+  const managementTax = showRetired && retiredTax ? retiredTax : tax;
+  async function reloadManagement() {
+    await reload();
+    if (showRetired) setRefresh((value) => value + 1);
+  }
   const parents: Record<TaxonomyKind, TaxonomyKind | null> = {
     courses: null,
     semesters: 'courses',
@@ -45,7 +69,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
           ...(kind === 'semesters' && version ? { curriculumVersionId: version } : {}),
         }),
       );
-      await reload();
+      await reloadManagement();
       setMessage(name + ' added.');
       setName('');
     } catch (e) {
@@ -66,8 +90,28 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
           </p>
         </div>
       </div>
-      <CurriculumVersions tax={tax} reload={reload} />
-      <TaxonomyEditor tax={tax} reload={reload} />
+      <CurriculumVersions tax={tax} reload={reloadManagement} />
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={showRetired}
+          onChange={(e) => {
+            setShowRetired(e.target.checked);
+            setRetiredTax(undefined);
+            setRetiredError('');
+          }}
+        />
+        Show retired records
+      </label>
+      {showRetired && !retiredTax && !retiredError && (
+        <p role="status">Loading retired records...</p>
+      )}
+      {retiredError && (
+        <p role="alert" className="error">
+          {retiredError}
+        </p>
+      )}
+      <TaxonomyEditor tax={managementTax} activeTax={tax} reload={reloadManagement} />
       <div className="curriculum-layout">
         <section className="panel">
           <h2>Add a curriculum record</h2>
@@ -163,13 +207,13 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
         </section>
         <section className="panel">
           <h2>Current hierarchy</h2>
-          {tax.courses.map((co) => (
+          {managementTax.courses.map((co) => (
             <section key={co.id} className="curriculum-course">
               <h3>
                 {co.name}
                 {co.isTest ? ' (test taxonomy)' : ''}
               </h3>
-              {tax.semesters
+              {managementTax.semesters
                 .filter((s) => s.parentId === co.id)
                 .map((s) => (
                   <details key={s.id} open>
@@ -184,7 +228,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                         s.order}
                       {s.isTest ? ' (test taxonomy)' : ''}
                     </summary>
-                    {tax.chapters
+                    {managementTax.chapters
                       .filter((c) => c.parentId === s.id)
                       .map((c) => (
                         <details key={c.id} className="tree-level" open>
@@ -193,7 +237,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                             {' · ' + c.status + ' · order ' + c.order}
                             {c.isTest ? ' (test taxonomy)' : ''}
                           </summary>
-                          {tax.topics
+                          {managementTax.topics
                             .filter((t) => t.parentId === c.id)
                             .map((t) => (
                               <div key={t.id} className="tree-level">
@@ -202,7 +246,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                                   {' · ' + t.status + ' · order ' + t.order}
                                   {t.isTest ? ' (test taxonomy)' : ''}
                                 </strong>
-                                {tax.subtopics
+                                {managementTax.subtopics
                                   .filter((st) => st.parentId === t.id)
                                   .map((st) => (
                                     <p className="tree-level" key={st.id}>
@@ -215,7 +259,7 @@ export function Curriculum({ tax, reload }: { tax: Taxonomy; reload: () => Promi
                             ))}
                         </details>
                       ))}
-                    {!tax.chapters.some((c) => c.parentId === s.id) && (
+                    {!managementTax.chapters.some((c) => c.parentId === s.id) && (
                       <p className="tree-level muted">
                         Awaiting authoritative chapter and topic data.
                       </p>

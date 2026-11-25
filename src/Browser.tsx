@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Taxonomy } from '../shared/schema';
 import { orderedQuestions, type ImageQuestion } from '../shared/image-question';
 import { useAuth } from './Auth';
@@ -10,6 +10,12 @@ import {
   useQuestionPage,
   useQuestionListStart,
 } from './Pagination';
+const academicFilters = [
+  ['semester', 'semesters'],
+  ['chapter', 'chapters'],
+  ['topic', 'topics'],
+  ['subtopic', 'subtopics'],
+] as const;
 export function Browser({ tax }: { tax: Taxonomy }) {
   const { session } = useAuth();
   const defaults = new URLSearchParams({
@@ -32,7 +38,23 @@ export function Browser({ tax }: { tax: Taxonomy }) {
     result,
     error: requestError,
     loading,
+    refresh,
   } = useQuestionPage<ImageQuestion>('/questions', query, replacePage);
+  const previousTax = useRef(tax);
+  useEffect(() => {
+    const changed = previousTax.current !== tax;
+    previousTax.current = tax;
+    const unavailable = academicFilters.findIndex(([filter, kind]) => {
+      const id = params.get(filter);
+      return Boolean(id && !tax[kind].some((record) => record.id === id));
+    });
+    if (unavailable >= 0) {
+      const clear = Object.fromEntries(
+        academicFilters.slice(unavailable).map(([filter]) => [filter, '']),
+      );
+      navigate({ ...clear, page: '1' }, true);
+    } else if (changed) refresh();
+  }, [tax, params, navigate, refresh]);
   const listStart = useQuestionListStart(page, Boolean(result));
   const error = requestError || selectionError;
   function select(q: ImageQuestion, checked: boolean) {
@@ -46,8 +68,11 @@ export function Browser({ tax }: { tax: Taxonomy }) {
       setSelectionError((e as Error).message);
     }
   }
-  const name = (kind: 'chapters' | 'topics' | 'subtopics', id: string) =>
-    tax[kind].find((t) => t.id === id)?.name ?? '';
+  const name = (
+    kind: 'chapters' | 'topics' | 'subtopics',
+    id: string,
+    retiredName?: string | null,
+  ) => retiredName ?? tax[kind].find((t) => t.id === id)?.name ?? '';
   return (
     <>
       <div className="page-heading">
@@ -130,7 +155,8 @@ export function Browser({ tax }: { tax: Taxonomy }) {
               <ol>
                 {selected.slice(0, 3).map((q) => (
                   <li key={q.id}>
-                    {name('chapters', q.chapterId)} - {q.totalMarks} marks{' '}
+                    {name('chapters', q.chapterId, q.retiredClassification?.chapter)} -{' '}
+                    {q.totalMarks} marks{' '}
                     <button aria-label={'Remove ' + q.id} onClick={() => select(q, false)}>
                       Remove
                     </button>
@@ -166,8 +192,11 @@ export function Browser({ tax }: { tax: Taxonomy }) {
               result?.items.map((q) => (
                 <article className="question-card" key={q.id}>
                   <p className="taxonomy-path">
-                    {name('chapters', q.chapterId)} / {name('topics', q.topicId)} /{' '}
-                    {q.subtopicId ? name('subtopics', q.subtopicId) : 'Subtopic: Not specified'}
+                    {name('chapters', q.chapterId, q.retiredClassification?.chapter)} /{' '}
+                    {name('topics', q.topicId, q.retiredClassification?.topic)} /{' '}
+                    {q.subtopicId
+                      ? name('subtopics', q.subtopicId, q.retiredClassification?.subtopic)
+                      : 'Subtopic: Not specified'}
                   </p>
                   <h2>
                     {q.totalMarks} marks ?{' '}

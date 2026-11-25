@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { BankError, type Bank } from './database.js';
+import { ImageQuestionService } from './image-questions.js';
 import {
   curriculumImportSchema,
   curriculumVersionSchema,
@@ -13,6 +14,12 @@ import {
   type EditableKind,
 } from '../shared/curriculum.js';
 import type { Taxon, Taxonomy } from '../shared/schema.js';
+import {
+  isReservedCurriculumName,
+  isUnassignedId,
+  unassignedName,
+  unassignedSlug,
+} from './unassigned.js';
 
 export const editableKinds = ['semesters', 'chapters', 'topics', 'subtopics'] as const;
 const parents = {
@@ -107,6 +114,7 @@ export class CurriculumService {
     return String(row.curriculum_version_id);
   }
   async assertWritableParent(kind: EditableKind, id: string) {
+    if (isUnassignedId(id)) throw new BankError(`${unassignedName} is protected`, 409);
     const tax = await this.bank.taxonomy();
     let row = tax[kind].find((t) => t.id === id);
     if (!row) throw new BankError('Unknown curriculum parent');
@@ -169,9 +177,15 @@ export class CurriculumService {
         ? path.curriculumVersion.id === id
         : path[kind.slice(0, -1) as 'semester' | 'chapter' | 'topic' | 'subtopic']?.id === id;
     };
-    let currentQuestions = 0;
+    const currentQuestions = new Set<string>();
+    let legacyQuestions = 0;
+    const legacySql =
+      "SELECT id,topic_id,subtopic_id,'legacy' origin FROM questions" +
+      (kind === 'curriculumVersions' || kind === 'semesters'
+        ? ' WHERE id NOT IN (SELECT id FROM image_questions)'
+        : '');
     for (const q of await this.bank.all(
-      'SELECT id,topic_id,subtopic_id FROM questions WHERE id NOT IN (SELECT id FROM image_questions) UNION ALL SELECT id,topic_id,subtopic_id FROM image_questions',
+      legacySql + " UNION ALL SELECT id,topic_id,subtopic_id,'image' origin FROM image_questions",
     ))
       if (
         await relevant({
@@ -180,8 +194,10 @@ export class CurriculumService {
             subtopicId: q.subtopic_id ? String(q.subtopic_id) : null,
           },
         })
-      )
-        currentQuestions++;
+      ) {
+        currentQuestions.add(String(q.id));
+        if (q.origin === 'legacy') legacyQuestions++;
+      }
     const key = kind === 'curriculumVersions' ? 'curriculumVersion' : kind.slice(0, -1);
     const history = (
       await this.bank.all(
@@ -215,7 +231,8 @@ export class CurriculumService {
     return {
       id,
       kind,
-      currentQuestions,
+      currentQuestions: currentQuestions.size,
+      legacyQuestions,
       historicalQuestions: new Set(history.map((r) => r.question_id)).size,
       pendingRevisions,
       descendants,
@@ -282,7 +299,8 @@ export class CurriculumService {
       new Date().toISOString(),
     );
   }
-  async edit(kind: EditableKind, id: string, input: unknown) {
+  async edit(kind: EditableKind, id: string, input: unknown, actor?: string) {
+    if (isUnassignedId(id)) throw new BankError(`${unassignedName} is protected`, 409);
     const edit = parse(taxonomyEditSchema, input);
     this.bank.requireNote(edit.note);
     this.bank.requireAuthor(edit.author ?? null);
@@ -297,8 +315,20 @@ export class CurriculumService {
         status: edit.status ?? before.status,
         parentId: edit.parentId ?? before.parentId,
       };
+      const retiring = before.status !== 'retired' && next.status === 'retired';
+      if (edit.transferQuestions && (kind !== 'topics' || !retiring || !impact.currentQuestions))
+        throw new BankError(
+          'Question transfer is available when retiring a topic with assigned questions.',
+          409,
+        );
       if (kind === 'semesters' && !['Semester 1', 'Semester 2'].includes(next.name))
         throw new BankError('Use the permanent semester names Semester 1 or Semester 2');
+      if (
+        (kind === 'chapters' || kind === 'topics') &&
+        next.name !== before.name &&
+        isReservedCurriculumName(next.name)
+      )
+        throw new BankError(`${unassignedName} is reserved for the holding area`, 409);
       if (next.parentId !== before.parentId) {
         if (kind === 'semesters')
           throw new BankError(
@@ -317,6 +347,16 @@ export class CurriculumService {
             409,
           );
         await this.assertWritableParent(parentKind, next.parentId!);
+        if (kind === 'topics') {
+          const chapters = (await this.bank.taxonomy()).chapters;
+          if (
+            chapters.find((chapter) => chapter.id === before.parentId)?.parentId !==
+            chapters.find((chapter) => chapter.id === next.parentId)?.parentId
+          )
+            throw new BankError('Topic moves must stay within the same semester.', 409);
+          if (!edit.confirmImpact)
+            throw new BankError('Confirm the topic relocation preview before moving.', 409);
+        }
       }
       const siblings = (await this.bank.taxonomy())[kind];
       if (
@@ -336,6 +376,28 @@ export class CurriculumService {
         next.parentId === before.parentId
       )
         throw new BankError('No curriculum changes to save');
+      if (retiring && kind !== 'semesters') {
+        if (impact.pendingRevisions)
+          throw new BankError(
+            'Resolve pending question revisions before retiring this record.',
+            409,
+          );
+        if (impact.legacyQuestions)
+          throw new BankError(
+            'This record still has legacy question assignments that cannot be transferred to Unassigned Questions.',
+            409,
+          );
+        if (impact.currentQuestions) {
+          if (kind !== 'topics')
+            throw new BankError('Reassign its questions before retiring this record.', 409);
+          if (!edit.transferQuestions || !actor)
+            throw new BankError(
+              'Confirm transfer of the assigned questions to Unassigned Questions before retiring this topic.',
+              409,
+            );
+          await new ImageQuestionService(this.bank).transferTopicQuestions(id, actor);
+        }
+      }
       try {
         await this.bank.run(
           `UPDATE ${kind} SET name=?,sort_order=?,status=?,${parents[kind]}=?,revision=revision+1 WHERE id=?`,
@@ -355,9 +417,13 @@ export class CurriculumService {
         kind,
         id,
         before,
-        { ...next, revision: impact.revision + 1 },
+        {
+          ...next,
+          revision: impact.revision + 1,
+          ...(edit.transferQuestions ? { transferredQuestions: impact.currentQuestions } : {}),
+        },
         edit.note,
-        edit.author ?? null,
+        edit.author ?? actor ?? null,
       );
       return { id, impact };
     });
@@ -556,6 +622,7 @@ export class CurriculumService {
     const takeId = (value: string | undefined) => {
       const valueId = value ?? randomUUID();
       if (
+        isUnassignedId(valueId) ||
         seenIds.has(valueId) ||
         (tax.curriculumVersions ?? []).some((v) => v.id === valueId) ||
         editableKinds.some((k) => tax[k].some((t) => t.id === valueId))
@@ -581,6 +648,11 @@ export class CurriculumService {
         item.slug ??= (
           (kind === 'semesters' ? slug(doc.curriculumVersion.code) + '-' : '') + slug(item.name)
         ).slice(0, 200);
+        if (
+          (kind === 'chapters' || kind === 'topics') &&
+          (isReservedCurriculumName(item.name) || item.slug === unassignedSlug)
+        )
+          throw new BankError(`${unassignedName} is reserved for the holding area`, 409);
         if (!item.slug || names.has(normalize(item.name)) || slugs.has(item.slug))
           throw new BankError(`Duplicate or invalid ${kind} name/slug: ${item.name}`, 409);
         if (

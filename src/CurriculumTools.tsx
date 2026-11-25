@@ -13,16 +13,23 @@ const kinds: EditableKind[] = ['semesters', 'chapters', 'topics', 'subtopics'];
 function Impact({ value }: { value: CurriculumImpact }) {
   return (
     <p className="notice" role="status">
-      This item contains {value.currentQuestions} current questions; {value.historicalQuestions}{' '}
-      questions reference it in saved history, with {value.pendingRevisions} pending revisions and{' '}
-      {value.descendants} descendant records. Retirement removes it from active browsing. Referenced
-      subtrees cannot move; use a new curriculum version.
+      This item contains {value.currentQuestions} current questions and has{' '}
+      {value.historicalQuestions} questions in saved history, {value.pendingRevisions} pending
+      revisions, and {value.descendants} descendant records. Referenced subtrees cannot move.
       {value.previousActive &&
         ` Activation also retires ${value.previousActive.name}, containing ${value.previousActive.currentQuestions} current questions. They remain available by selecting the retired version.`}
     </p>
   );
 }
-export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => Promise<void> }) {
+export function TaxonomyEditor({
+  tax,
+  activeTax,
+  reload,
+}: {
+  tax: Taxonomy;
+  activeTax: Taxonomy;
+  reload: () => Promise<void>;
+}) {
   const [kind, setKind] = useState<EditableKind>('topics'),
     [id, setId] = useState(''),
     [name, setName] = useState(''),
@@ -31,6 +38,7 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
     [parent, setParent] = useState(''),
     [impact, setImpact] = useState<CurriculumImpact | null>(null),
     [confirmed, setConfirmed] = useState(false),
+    [transferQuestions, setTransferQuestions] = useState(false),
     [note, setNote] = useState(''),
     [error, setError] = useState(''),
     [message, setMessage] = useState(''),
@@ -43,6 +51,33 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
         : kind === 'subtopics'
           ? 'topics'
           : null;
+  const record = tax[kind].find((row) => row.id === id);
+  const movingTopic = kind === 'topics' && record && parent !== record.parentId;
+  const retiring = record && record.status !== 'retired' && status === 'retired';
+  const retirementBlock =
+    retiring && kind !== 'semesters' && impact
+      ? impact.pendingRevisions
+        ? 'Resolve pending question revisions before retiring this record.'
+        : impact.legacyQuestions
+          ? 'This record has legacy assignments that cannot be transferred to Unassigned Questions.'
+          : kind !== 'topics' && impact.currentQuestions
+            ? 'Reassign these questions before retiring this record.'
+            : ''
+      : '';
+  const canTransfer = Boolean(
+    retiring && kind === 'topics' && impact?.currentQuestions && !retirementBlock,
+  );
+  const candidates = parentKind
+    ? tax[parentKind].filter(
+        (row) =>
+          (row.id === record?.parentId ||
+            activeTax[parentKind].some((parent) => parent.id === row.id)) &&
+          versionOf(parentKind, row.id) === versionOf(kind, id) &&
+          (kind !== 'topics' ||
+            row.parentId ===
+              tax.chapters.find((chapter) => chapter.id === record?.parentId)?.parentId),
+      )
+    : [];
   function versionOf(k: EditableKind, entityId: string): string | undefined {
     const row = tax[k].find((t) => t.id === entityId);
     return k === 'semesters'
@@ -64,8 +99,8 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
     const row = tax[kind].find((t) => t.id === id);
     setImpact(null);
     setConfirmed(false);
+    setTransferQuestions(false);
     setError('');
-    setMessage('');
     if (!row) return;
     setName(row.name);
     setOrder(row.order);
@@ -99,6 +134,7 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
           expectedRevision: impact.revision,
           impactToken: impact.token,
           confirmImpact: confirmed,
+          ...(canTransfer && transferQuestions ? { transferQuestions: true } : {}),
           note,
         }),
       );
@@ -118,6 +154,10 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
         Rename, reorder, retire or restore records while keeping their IDs and slugs. Unreferenced
         chapters, topics and subtopics can move within the same version.
       </p>
+      <p>
+        The database prevents permanent deletion of chapters, topics and subtopics, including unused
+        records. Retire unwanted records to remove them from selection.
+      </p>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -135,6 +175,7 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
             onChange={(e) => {
               setKind(e.target.value as EditableKind);
               setId('');
+              setMessage('');
             }}
           >
             {kinds.map((k) => (
@@ -143,7 +184,13 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
           </select>
         </Field>
         <Field label="Curriculum record">
-          <select value={id} onChange={(e) => setId(e.target.value)}>
+          <select
+            value={record ? id : ''}
+            onChange={(e) => {
+              setId(e.target.value);
+              setMessage('');
+            }}
+          >
             <option value="">Select a record</option>
             {tax[kind].map((t) => (
               <option key={t.id} value={t.id}>
@@ -153,7 +200,7 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
           </select>
         </Field>
       </div>
-      {id && (
+      {record && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -182,7 +229,10 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
             <Field label="Curriculum item status">
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as 'active' | 'retired')}
+                onChange={(e) => {
+                  setStatus(e.target.value as 'active' | 'retired');
+                  setTransferQuestions(false);
+                }}
               >
                 <option value="active">Active</option>
                 <option value="retired">Retired</option>
@@ -192,7 +242,10 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
               <Field label="Move to parent">
                 <select
                   value={parent}
-                  onChange={(e) => setParent(e.target.value)}
+                  onChange={(e) => {
+                    setParent(e.target.value);
+                    setConfirmed(false);
+                  }}
                   disabled={Boolean(
                     impact &&
                     (impact.currentQuestions ||
@@ -200,17 +253,39 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
                       impact.pendingRevisions),
                   )}
                 >
-                  {tax[parentKind]
-                    .filter((t) => versionOf(parentKind, t.id) === versionOf(kind, id))
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {label(parentKind, t.id)}
-                      </option>
-                    ))}
+                  {candidates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {label(parentKind, t.id)}
+                    </option>
+                  ))}
                 </select>
               </Field>
             )}
           </div>
+          {movingTopic && impact && (
+            <div className="notice" aria-live="polite">
+              <p>Original chapter — {label('chapters', record.parentId!)}</p>
+              <p>Destination chapter — {label('chapters', parent)}</p>
+              <p>
+                {impact.currentQuestions} affected{' '}
+                {impact.currentQuestions === 1 ? 'question' : 'questions'} and {impact.descendants}{' '}
+                affected {impact.descendants === 1 ? 'subtopic' : 'subtopics'}.
+              </p>
+            </div>
+          )}
+          {retirementBlock && <p className="notice">{retirementBlock}</p>}
+          {canTransfer && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={transferQuestions}
+                onChange={(e) => setTransferQuestions(e.target.checked)}
+              />
+              Move {impact!.currentQuestions} assigned{' '}
+              {impact!.currentQuestions === 1 ? 'question' : 'questions'} to Unassigned Questions
+              before retiring this topic.
+            </label>
+          )}
           <Field label="Curriculum change note">
             <textarea
               required
@@ -228,7 +303,16 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
             I reviewed the impact on current browsing and linked questions.
           </label>
           <div className="actions">
-            <button className="button primary" disabled={busy || !impact}>
+            <button
+              className="button primary"
+              disabled={
+                busy ||
+                !impact ||
+                Boolean(retirementBlock) ||
+                (movingTopic && !confirmed) ||
+                (canTransfer && (!transferQuestions || !confirmed))
+              }
+            >
               Save curriculum change
             </button>
             <button
@@ -240,6 +324,7 @@ export function TaxonomyEditor({ tax, reload }: { tax: Taxonomy; reload: () => P
                   .then((r) => {
                     setImpact(r);
                     setConfirmed(false);
+                    setTransferQuestions(false);
                     setError('');
                   })
                   .catch((e) => setError(e.message))

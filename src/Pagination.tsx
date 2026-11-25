@@ -124,7 +124,13 @@ export function useQuestionPage<T>(
   const key = endpoint + '?' + query,
     cache = useRef<Result | undefined>(undefined),
     [data, setData] = useState<Result>(),
-    [failure, setFailure] = useState({ key: '', message: '' });
+    [failure, setFailure] = useState({ key: '', message: '' }),
+    [refreshVersion, setRefreshVersion] = useState(0);
+  const refresh = useCallback(() => {
+    cache.current = undefined;
+    setData(undefined);
+    setRefreshVersion((version) => version + 1);
+  }, []);
   useEffect(() => {
     if (cache.current?.key === key) {
       setData(cache.current);
@@ -145,12 +151,13 @@ export function useQuestionPage<T>(
         if (!controller.signal.aborted) setFailure({ key, message: e.message });
       });
     return () => controller.abort();
-  }, [endpoint, key, query, replacePage]);
+  }, [endpoint, key, query, replacePage, refreshVersion]);
   const error = failure.key === key ? failure.message : '';
   return {
     result: data?.key === key ? data.result : undefined,
     error,
     loading: data?.key !== key && !error,
+    refresh,
   };
 }
 

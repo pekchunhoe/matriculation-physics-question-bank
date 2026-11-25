@@ -4,10 +4,16 @@ import { Bank, BankError, taxonomyTables, type Filters } from './database.js';
 import { AssetStorageError, AssetWriteFailure, type AssetStorage } from './asset-storage.js';
 import { AuthService, type AdminIdentity } from './auth.js';
 import { VisibilityService } from './visibility.js';
-import { ImageQuestionService, publicImageQuestion } from './image-questions.js';
+import {
+  activeTopicSql,
+  assignedImageQuestion,
+  ImageQuestionService,
+  publicImageQuestion,
+} from './image-questions.js';
 import { imageLimits } from '../shared/image-question.js';
 import { assetKeyFromReference } from '../shared/asset-reference.js';
 import { editableKinds } from './curriculum.js';
+import { isUnassignedId } from './unassigned.js';
 import type { EditableKind } from '../shared/curriculum.js';
 import { securityHeaders } from './security-headers.js';
 import { StudentService } from './students.js';
@@ -204,7 +210,7 @@ export function createApp(
     res.type(result.metadata.mime).send(result.bytes);
   });
   app.get('/api/taxonomy', async (req, res) =>
-    res.json(identities.has(req) ? await bank.taxonomy() : await visibility.taxonomy()),
+    res.json(await visibility.taxonomy(identities.has(req), req.query.includeRetired === 'true')),
   );
   const editable = (kind: string): EditableKind => {
     if (!editableKinds.includes(kind as EditableKind))
@@ -218,13 +224,20 @@ export function createApp(
   );
   app.patch('/api/taxonomy/:kind/:id', async (req, res) =>
     res.json(
-      await bank.curriculum.edit(editable(req.params.kind), String(req.params.id), req.body),
+      await bank.curriculum.edit(
+        editable(req.params.kind),
+        String(req.params.id),
+        req.body,
+        identities.get(req)!.id,
+      ),
     ),
   );
   app.delete('/api/taxonomy/:kind/:id', (req) => {
-    editable(req.params.kind);
+    const kind = editable(req.params.kind);
+    if (isUnassignedId(String(req.params.id)))
+      throw new BankError('Unassigned Questions holding records are protected', 409);
     throw new BankError(
-      'Permanent curriculum deletion is disabled. Retire the item to preserve question history.',
+      `The database prevents permanent deletion of ${kind}, including unused records. Retire the item instead.`,
       409,
     );
   });
@@ -299,19 +312,28 @@ export function createApp(
   app.get('/api/counts', async (req, res) =>
     res.json(
       await bank.all(
-        `SELECT s.id semester_id,c.id chapter_id,t.id topic_id,q.difficulty_id,COUNT(*) count FROM image_questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id WHERE ${identities.has(req) ? '1=1' : publicImageQuestion} GROUP BY s.id,c.id,t.id,q.difficulty_id`,
+        `SELECT s.id semester_id,c.id chapter_id,t.id topic_id,q.difficulty_id,COUNT(*) count FROM image_questions q JOIN topics t ON t.id=q.topic_id JOIN chapters c ON c.id=t.chapter_id JOIN semesters s ON s.id=c.semester_id JOIN curriculum_versions cv ON cv.id=s.curriculum_version_id WHERE ${activeTopicSql} AND ${identities.has(req) ? assignedImageQuestion : publicImageQuestion} GROUP BY s.id,c.id,t.id,q.difficulty_id`,
       ),
     ),
   );
-  app.get('/api/questions', async (req, res) => {
-    const filters: Filters = {};
-    for (const [key, value] of Object.entries(req.query)) {
-      if (typeof value !== 'string' || /^(page|limit)\[/.test(key))
-        throw new BankError('Query parameters must be single strings');
-      filters[key] = value;
-    }
-    res.json(await questions.list(filters, identities.has(req)));
-  });
+  const listQuestions =
+    (unassigned = false): express.RequestHandler =>
+    async (req, res) => {
+      const filters: Filters = {};
+      for (const [key, value] of Object.entries(req.query)) {
+        if (typeof value !== 'string' || /^(page|limit)\[/.test(key))
+          throw new BankError('Query parameters must be single strings');
+        filters[key] = value;
+      }
+      res.json(await questions.list(filters, identities.has(req), unassigned));
+    };
+  app.get('/api/questions', listQuestions());
+  app.get('/api/admin/unassigned', admin, listQuestions(true));
+  app.patch('/api/admin/unassigned/:id', admin, async (req, res) =>
+    res.json(
+      await questions.changeAssignment(String(req.params.id), req.body, identities.get(req)!.id),
+    ),
+  );
   app.get('/api/questions/:id', async (req, res) =>
     res.json(
       await questions.get(String(req.params.id), identities.has(req), req.query.answers === 'true'),

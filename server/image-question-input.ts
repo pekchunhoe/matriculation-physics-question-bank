@@ -20,3 +20,19 @@ export const imageQuestionInput = z
     legacyId: id.optional(),
   })
   .strict() satisfies z.ZodType<ImageQuestionInput>;
+
+export const assignmentChangeInput = z
+  .object({
+    expectedRevision: z.number().int().positive(),
+    confirmed: z.literal(true),
+    mapping: imageQuestionInput
+      .pick({
+        curriculumVersionId: true,
+        semesterId: true,
+        chapterId: true,
+        topicId: true,
+        subtopicId: true,
+      })
+      .nullable(),
+  })
+  .strict();

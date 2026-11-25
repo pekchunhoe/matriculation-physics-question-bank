@@ -33,7 +33,11 @@ export function Preview({ tax, id }: { tax: Taxonomy; id: string }) {
           <div className="page-heading">
             <div>
               <p className="eyebrow">QUESTION PREVIEW</p>
-              <h1>{tax.topics.find((t) => t.id === q.topicId)?.name ?? 'Question'}</h1>
+              <h1>
+                {q.retiredClassification?.topic ??
+                  tax.topics.find((t) => t.id === q.topicId)?.name ??
+                  'Question'}
+              </h1>
               <p>
                 {q.totalMarks} marks ?{' '}
                 {tax.difficulties.find((d) => d.id === q.difficultyId)?.name.toUpperCase()}
